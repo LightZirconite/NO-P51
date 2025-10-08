@@ -471,8 +471,74 @@ function Invoke-Nop51GitMaintenance {
     $previousHead = $null
   }
 
-  $pullOutput = & $gitCommand.Path -C $repoRoot pull --ff-only 2>&1
-  $exitCode = $LASTEXITCODE
+  $statusOutput = $null
+  $statusExitCode = 0
+  try {
+    $statusOutput = & $gitCommand.Path -C $repoRoot status --porcelain 2>&1
+    $statusExitCode = $LASTEXITCODE
+  } catch {
+    $statusExitCode = 1
+    $statusOutput = $_.Exception.Message
+  }
+
+  if ($statusExitCode -eq 0 -and $statusOutput) {
+    $statusLines = @()
+    if ($statusOutput -is [System.Array]) {
+      $statusLines = $statusOutput
+    } else {
+      $statusLines = @($statusOutput.ToString())
+    }
+
+    if ($statusLines.Count -gt 0) {
+      $previewLimit = 15
+      $previewLines = $statusLines
+      if ($statusLines.Count -gt $previewLimit) {
+        $remaining = $statusLines.Count - $previewLimit
+        $previewLines = $statusLines[0..($previewLimit - 1)] + "... ($remaining more item(s))"
+      }
+      $messageLines = @(
+        "Git update skipped.",
+        "Local changes detected:",
+        ""
+      ) + $previewLines + @(
+        "",
+        "Commit, stash, or discard these changes before launching NO-P51 to re-enable automatic updates."
+      )
+      [System.Windows.Forms.MessageBox]::Show((($messageLines) -join "`n"), "NO-P51", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+      return
+    }
+  }
+
+  $pullOutput = @()
+  $exitCode = 0
+  try {
+    $pullOutput = & $gitCommand.Path -C $repoRoot pull --ff-only 2>&1
+    $exitCode = $LASTEXITCODE
+  } catch {
+    $exitProperty = $null
+    if ($_.Exception -and $_.Exception.PSObject) {
+      $exitProperty = $_.Exception.PSObject.Properties["ExitCode"]
+    }
+    if ($exitProperty) {
+      $exitCodeValue = $exitProperty.Value
+      if ($exitCodeValue -is [int]) {
+        $exitCode = $exitCodeValue
+      } else {
+        $exitCode = 1
+      }
+    } else {
+      $exitCode = 1
+    }
+
+    $errorMessage = $_.Exception.Message
+    if (-not [string]::IsNullOrWhiteSpace($errorMessage)) {
+      if ($pullOutput -and $pullOutput.Count -gt 0) {
+        $pullOutput += $errorMessage
+      } else {
+        $pullOutput = @($errorMessage)
+      }
+    }
+  }
 
   if ($exitCode -ne 0) {
     $message = ($pullOutput -join "`n").Trim()
