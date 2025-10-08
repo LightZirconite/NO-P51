@@ -63,7 +63,7 @@ Si vous ne voulez pas d'action secondaire, supprimez l'objet `fallback` ou mette
 
 ### Interface graphique
 
-> À chaque démarrage, NO-P51 vérifie la présence de Git et exécute automatiquement `git pull` dans le dossier du projet. Si une mise à jour est récupérée, l'application redémarre immédiatement pour charger la nouvelle version.
+> À chaque démarrage, NO-P51 vérifie la présence de Git et exécute automatiquement `git pull` dans le dossier du projet. Si une mise à jour est récupérée, l'application redémarre immédiatement pour charger la nouvelle version. Les personnalisations locales de `config.json` sont conservées automatiquement.
 
 1. Double-cliquez sur `NO-P51.bat` pour ouvrir le panneau de contrôle.
 2. Double-cliquez sur un processus dans la liste (ou tapez dans **Filter** pour filtrer en direct) afin de remplir le champ cible. Les noms sont affichés avec leur extension `.exe`; cochez *Use PID when selecting* uniquement si vous devez cibler un PID ponctuel. Le panneau rappelle que les PID changent à chaque lancement et qu'il est donc recommandé d'utiliser le nom (`notepad.exe`, etc.). Une étiquette indique également si l'application tourne avec des droits administrateur.
@@ -106,4 +106,5 @@ Les tests valident la lecture des combinaisons de touches et la cohérence de la
 - Prise en charge de plusieurs profils simultanés.
 - Historique des actions pour audit rapide.
 - Détection automatique du processus actif au moment du masquage.
+
 

@@ -481,38 +481,63 @@ function Invoke-Nop51GitMaintenance {
     $statusOutput = $_.Exception.Message
   }
 
+  $useAutoStash = $false
+
   if ($statusExitCode -eq 0 -and $statusOutput) {
     $statusLines = @()
     if ($statusOutput -is [System.Array]) {
-      $statusLines = $statusOutput
+      foreach ($line in $statusOutput) {
+        if ($null -ne $line) {
+          $statusLines += $line.ToString()
+        }
+      }
     } else {
-      $statusLines = @($statusOutput.ToString())
+      $statusLines = $statusOutput.ToString().Split(("`r`n", "`n"), [System.StringSplitOptions]::RemoveEmptyEntries)
     }
 
-    if ($statusLines.Count -gt 0) {
-      $previewLimit = 15
-      $previewLines = $statusLines
-      if ($statusLines.Count -gt $previewLimit) {
-        $remaining = $statusLines.Count - $previewLimit
-        $previewLines = $statusLines[0..($previewLimit - 1)] + "... ($remaining more item(s))"
+    $statusLines = $statusLines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    $statusItems = Get-Nop51GitStatusItems -Lines $statusLines
+
+    if ($statusItems.Count -gt 0) {
+      $blockedItems = $statusItems | Where-Object { -not (Test-Nop51AllowedGitPath -Path $_.Path) }
+      if ($blockedItems.Count -gt 0) {
+        $displayLines = @()
+        foreach ($item in $blockedItems) {
+          $displayLines += ("{0} {1}" -f $item.Status, $item.Path)
+        }
+
+        $previewLimit = 15
+        $previewLines = $displayLines
+        if ($displayLines.Count -gt $previewLimit) {
+          $remaining = $displayLines.Count - $previewLimit
+          $previewLines = $displayLines[0..($previewLimit - 1)] + "... ($remaining more item(s))"
+        }
+
+        $messageLines = @(
+          "Git update skipped.",
+          "Local changes detected:",
+          ""
+        ) + $previewLines + @(
+          "",
+          "Commit, stash, or discard these changes (except for 'config.json') before launching NO-P51 to re-enable automatic updates."
+        )
+        [System.Windows.Forms.MessageBox]::Show((($messageLines) -join "`n"), "NO-P51", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+        return
       }
-      $messageLines = @(
-        "Git update skipped.",
-        "Local changes detected:",
-        ""
-      ) + $previewLines + @(
-        "",
-        "Commit, stash, or discard these changes before launching NO-P51 to re-enable automatic updates."
-      )
-      [System.Windows.Forms.MessageBox]::Show((($messageLines) -join "`n"), "NO-P51", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
-      return
+
+      $useAutoStash = $true
     }
+  }
+
+  $pullArguments = @("-C", $repoRoot, "pull", "--ff-only")
+  if ($useAutoStash) {
+    $pullArguments += "--autostash"
   }
 
   $pullOutput = @()
   $exitCode = 0
   try {
-    $pullOutput = & $gitCommand.Path -C $repoRoot pull --ff-only 2>&1
+    $pullOutput = & $gitCommand.Path @pullArguments 2>&1
     $exitCode = $LASTEXITCODE
   } catch {
     $exitProperty = $null

@@ -1,7 +1,13 @@
 ﻿{
-    "targetProcessName":  "Notepad.exe",
+    "targetProcessName":  "RobloxPlayerBeta.exe",
     "hideStrategy":  "hide",
     "hideHotkey":  "=",
     "restoreHotkey":  "Ctrl+Alt+R",
-    "fallback":  null
+    "iconPath":  null,
+    "fallback":  {
+                     "mode":  "url",
+                     "value":  "https://v3.e-prevention.fr/learner",
+                     "autoClose":  false,
+                     "fullscreen":  true
+                 }
 }
