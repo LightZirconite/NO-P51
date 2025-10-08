@@ -1,0 +1,7 @@
+﻿{
+    "targetProcessName":  "Notepad.exe",
+    "hideStrategy":  "hide",
+    "hideHotkey":  "=",
+    "restoreHotkey":  "Ctrl+Alt+R",
+    "fallback":  null
+}
