@@ -301,6 +301,17 @@ function Use-Nop51IconFromConfig {
   Apply-Nop51IconToUi
 }
 
+function Refresh-Nop51IconPreviewFromTextBox {
+  if (-not $script:uiControls -or -not $script:uiControls.LogoPathText) {
+    return
+  }
+
+  $rawValue = $script:uiControls.LogoPathText.Text
+  $trimmedValue = if ($rawValue) { $rawValue.Trim() } else { "" }
+  $previewConfig = [pscustomobject]@{ iconPath = if ([string]::IsNullOrWhiteSpace($trimmedValue)) { $null } else { $trimmedValue } }
+  Use-Nop51IconFromConfig -Config $previewConfig
+}
+
 function Ensure-Nop51GitReady {
   if ($script:gitCommandCache) {
     return $script:gitCommandCache
@@ -1227,6 +1238,8 @@ $script:uiControls = [pscustomobject]@{
   PrivilegeStatusLabel = $privilegeStatusLabel
   HideHotkeyText = $hideHotkeyText
   RestoreHotkeyText = $restoreHotkeyText
+  LogoPathText = $null
+  LogoPicture = $null
   FallbackNone = $fallbackNone
   FallbackApp = $fallbackApp
   FallbackUrl = $fallbackUrl
@@ -1331,6 +1344,14 @@ function Populate-FormFromConfig {
       $script:uiControls.RestoreHotkeyText.Text = "Ctrl+Alt+R"
     }
 
+    if ($script:uiControls.LogoPathText) {
+      if ($Config.PSObject.Properties.Name -contains "iconPath" -and $Config.iconPath) {
+        $script:uiControls.LogoPathText.Text = $Config.iconPath.ToString()
+      } else {
+        $script:uiControls.LogoPathText.Text = ""
+      }
+    }
+
     if ($Config.fallback) {
       $mode = $Config.fallback.mode.ToString().ToLowerInvariant()
       switch ($mode) {
@@ -1376,6 +1397,7 @@ function Populate-FormFromConfig {
     }
   }
   finally {
+    Refresh-Nop51IconPreviewFromTextBox
     Update-FallbackControls
     Update-HideStrategyWarning
     $script:isLoadingConfig = $false
@@ -1700,6 +1722,7 @@ $form.add_FormClosing({
 $form.add_Shown({
   Refresh-ProcessList -PreserveSelection
   $config = Read-Nop51ConfigOrDefault
+  Use-Nop51IconFromConfig -Config $config
   Populate-FormFromConfig -Config $config
   Update-Nop51ServiceUi -StartButton $script:uiControls.StartButton -StatusLabel $script:uiControls.StatusLabel
   Update-Nop51ConfigStatus "Configuration loaded"
