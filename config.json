@@ -1,5 +1,5 @@
-{
-    "targetProcessName":  "RobloxPlayerBeta.exe",
+﻿{
+    "targetProcessName":  "firefox.exe",
     "hideStrategy":  "hide",
     "hideHotkey":  "=",
     "restoreHotkey":  "Ctrl+Alt+R",

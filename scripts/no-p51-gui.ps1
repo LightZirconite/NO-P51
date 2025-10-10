@@ -496,10 +496,10 @@ function Invoke-Nop51GitMaintenance {
     }
 
     $statusLines = $statusLines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-    $statusItems = Get-Nop51GitStatusItems -Lines $statusLines
+  $statusItems = @(Get-Nop51GitStatusItems -Lines $statusLines)
 
     if ($statusItems.Count -gt 0) {
-      $blockedItems = $statusItems | Where-Object { -not (Test-Nop51AllowedGitPath -Path $_.Path) }
+      $blockedItems = @($statusItems | Where-Object { -not (Test-Nop51AllowedGitPath -Path $_.Path) })
       if ($blockedItems.Count -gt 0) {
         $displayLines = @()
         foreach ($item in $blockedItems) {
@@ -507,7 +507,7 @@ function Invoke-Nop51GitMaintenance {
         }
 
         $previewLimit = 15
-        $previewLines = $displayLines
+        $previewLines = @($displayLines)
         if ($displayLines.Count -gt $previewLimit) {
           $remaining = $displayLines.Count - $previewLimit
           $previewLines = $displayLines[0..($previewLimit - 1)] + "... ($remaining more item(s))"
@@ -534,45 +534,179 @@ function Invoke-Nop51GitMaintenance {
     $pullArguments += "--autostash"
   }
 
-  $pullOutput = @()
-  $exitCode = 0
-  try {
-    $pullOutput = & $gitCommand.Path @pullArguments 2>&1
-    $exitCode = $LASTEXITCODE
-  } catch {
-    $exitProperty = $null
-    if ($_.Exception -and $_.Exception.PSObject) {
-      $exitProperty = $_.Exception.PSObject.Properties["ExitCode"]
-    }
-    if ($exitProperty) {
-      $exitCodeValue = $exitProperty.Value
-      if ($exitCodeValue -is [int]) {
-        $exitCode = $exitCodeValue
-      } else {
-        $exitCode = 1
+  $invokePull = {
+    param([string[]]$Arguments)
+
+    $outputBuffer = @()
+    $exitCodeValue = 0
+
+    try {
+      $outputBuffer = & $gitCommand.Path @Arguments 2>&1
+      $exitCodeValue = $LASTEXITCODE
+    } catch {
+      $exitCodeValue = 1
+
+      $exitProperty = $null
+      if ($_.Exception -and $_.Exception.PSObject) {
+        $exitProperty = $_.Exception.PSObject.Properties["ExitCode"]
       }
-    } else {
-      $exitCode = 1
+      if ($exitProperty -and $exitProperty.Value -is [int]) {
+        $exitCodeValue = [int]$exitProperty.Value
+      }
+
+      $caughtMessage = $_.Exception.Message
+      if (-not [string]::IsNullOrWhiteSpace($caughtMessage)) {
+        if ($outputBuffer -and $outputBuffer.Count -gt 0) {
+          $outputBuffer += $caughtMessage
+        } else {
+          $outputBuffer = @($caughtMessage)
+        }
+      }
     }
 
-    $errorMessage = $_.Exception.Message
-    if (-not [string]::IsNullOrWhiteSpace($errorMessage)) {
-      if ($pullOutput -and $pullOutput.Count -gt 0) {
-        $pullOutput += $errorMessage
-      } else {
-        $pullOutput = @($errorMessage)
+    $normalizedOutput = @()
+    if ($outputBuffer -is [System.Array]) {
+      foreach ($entry in $outputBuffer) {
+        if ($null -ne $entry) {
+          $normalizedOutput += $entry.ToString().TrimEnd("`r", "`n")
+        }
+      }
+    } elseif ($outputBuffer) {
+      $normalizedOutput = @($outputBuffer.ToString().TrimEnd("`r", "`n"))
+    }
+
+    return [pscustomobject]@{
+      ExitCode = $exitCodeValue
+      Output = $normalizedOutput
+    }
+  }
+
+  $pullResult = & $invokePull $pullArguments
+  $nonFastForwardDetected = $false
+  $fallbackAttempted = $false
+
+  if ($pullResult.ExitCode -ne 0 -and $pullResult.Output) {
+    foreach ($line in $pullResult.Output) {
+      if ($null -ne $line) {
+        $text = $line.ToString()
+        if ($text.IndexOf("not possible to fast-forward", [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+            $text.IndexOf("need to specify how to reconcile divergent branches", [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+            $text.IndexOf("refusing to merge unrelated histories", [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+          $nonFastForwardDetected = $true
+          break
+        }
       }
     }
   }
 
-  if ($exitCode -ne 0) {
-    $message = ($pullOutput -join "`n").Trim()
-    if ([string]::IsNullOrWhiteSpace($message)) {
-      $message = "Git update failed (code $exitCode)."
-    } else {
-      $message = "Git update failed:`n$message"
+  if ($nonFastForwardDetected) {
+    $fallbackAttempted = $true
+    $fallbackArguments = @("-C", $repoRoot, "pull")
+    if ($useAutoStash) {
+      $fallbackArguments += "--autostash"
     }
-    [System.Windows.Forms.MessageBox]::Show($message, "NO-P51", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+
+    $fallbackResult = & $invokePull $fallbackArguments
+    if ($fallbackResult.ExitCode -eq 0) {
+      $pullResult = $fallbackResult
+    } else {
+      $combinedOutput = @()
+      if ($pullResult.Output -and $pullResult.Output.Count -gt 0) {
+        $combinedOutput += $pullResult.Output
+      }
+      if ($combinedOutput.Count -gt 0) {
+        $combinedOutput += ""
+        $combinedOutput += "Fallback git pull also failed."
+      }
+      if ($fallbackResult.Output -and $fallbackResult.Output.Count -gt 0) {
+        $combinedOutput += $fallbackResult.Output
+      }
+
+      if ($combinedOutput.Count -eq 0) {
+        $combinedOutput = $fallbackResult.Output
+      }
+
+      $pullResult = [pscustomobject]@{
+        ExitCode = $fallbackResult.ExitCode
+        Output = $combinedOutput
+      }
+    }
+  }
+
+  if ($pullResult.ExitCode -ne 0) {
+    $messageLines = @()
+    if ($pullResult.Output) {
+      foreach ($line in $pullResult.Output) {
+        if ($null -eq $line) {
+          continue
+        }
+
+        $lineText = $line.ToString().TrimEnd()
+        if ($lineText -or $messageLines.Count -eq 0 -or $messageLines[-1]) {
+          $messageLines += $lineText
+        }
+      }
+    }
+
+    $credentialPatterns = @(
+      "could not read Username for 'https://",
+      "authentication failed for 'https://",
+      "fatal: authentication failed"
+    )
+
+    $requiresCredential = $false
+    foreach ($pattern in $credentialPatterns) {
+      foreach ($line in $messageLines) {
+        if ($line -and $line.IndexOf($pattern, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+          $requiresCredential = $true
+          break
+        }
+      }
+      if ($requiresCredential) {
+        break
+      }
+    }
+
+    if ($requiresCredential) {
+      $credentialMessage = @(
+        "Git update failed because credentials are required.",
+        ""
+      )
+
+      if ($messageLines.Count -gt 0) {
+        $credentialMessage += $messageLines
+        $credentialMessage += ""
+      }
+
+      $credentialMessage += @(
+        "Select Yes to open a PowerShell window and run 'git pull' interactively.",
+        "Select No to resolve it later."
+      )
+
+      $choice = [System.Windows.Forms.MessageBox]::Show(($credentialMessage -join "`n"), "NO-P51", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
+      if ($choice -eq [System.Windows.Forms.DialogResult]::Yes) {
+        $argumentList = @("-NoLogo", "-NoProfile", "-NoExit", "-Command", "git pull")
+        try {
+          Start-Process -FilePath "powershell.exe" -ArgumentList $argumentList -WorkingDirectory $repoRoot -WindowStyle Normal | Out-Null
+        } catch {
+          # ignore failures when trying to open the helper console
+        }
+      }
+      return
+    }
+
+    $messageToShow = $null
+    if ($messageLines.Count -gt 0) {
+      $messageToShow = "Git update failed:`n{0}" -f ($messageLines -join "`n")
+    } else {
+      $messageToShow = "Git update failed (code $($pullResult.ExitCode))."
+    }
+
+    if ($fallbackAttempted -and $messageLines.Count -gt 0) {
+      $messageToShow += "`n(No fast-forward update was possible.)"
+    }
+
+    [System.Windows.Forms.MessageBox]::Show($messageToShow, "NO-P51", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
     return
   }
 
