@@ -1,13 +1,8 @@
-﻿{
+{
     "targetProcessName":  "RobloxPlayerBeta.exe",
     "hideStrategy":  "hide",
     "hideHotkey":  "=",
     "restoreHotkey":  "Ctrl+Alt+R",
     "iconPath":  null,
-    "fallback":  {
-                     "mode":  "url",
-                     "value":  "https://v3.e-prevention.fr/learner",
-                     "autoClose":  false,
-                     "fullscreen":  true
-                 }
+    "fallback":  null
 }
