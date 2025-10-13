@@ -723,7 +723,9 @@ function Invoke-Nop51GitMaintenance {
   }
 }
 
-Invoke-Nop51GitMaintenance
+# Git maintenance is now handled by bootstrap.ps1 before launching the GUI
+# Invoke-Nop51GitMaintenance is commented out to avoid duplicate checks
+# Invoke-Nop51GitMaintenance
 
 function Save-Nop51ConfigFromForm {
   param(
