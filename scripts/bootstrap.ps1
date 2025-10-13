@@ -1,5 +1,8 @@
 param(
-  [string]$ConfigPath = (Join-Path -Path (Split-Path -Parent $PSScriptRoot) -ChildPath "config.json")
+  [string]$ConfigPath = (Join-Path -Path (Split-Path -Parent $PSScriptRoot) -ChildPath "config.json"),
+  [switch]$SkipUpdateCheck,
+  [switch]$ForceUpdate,
+  [switch]$Verbose
 )
 
 Set-StrictMode -Version Latest
@@ -7,6 +10,9 @@ $ErrorActionPreference = "Stop"
 
 $script:repoRoot = Split-Path -Parent $PSScriptRoot
 $script:guiScriptPath = Join-Path $PSScriptRoot "no-p51-gui.ps1"
+$script:cacheFile = Join-Path $script:repoRoot ".update-cache"
+$script:logFile = Join-Path $script:repoRoot "bootstrap.log"
+$script:updateCheckInterval = 3600 # 1 hour in seconds
 
 function Write-BootstrapLog {
   param([string]$Message, [string]$Type = "Info")
@@ -19,19 +25,109 @@ function Write-BootstrapLog {
     default { "[INFO]" }
   }
   
-  Write-Host "$timestamp $prefix $Message" -ForegroundColor $(
-    switch ($Type) {
-      "Error" { "Red" }
-      "Warning" { "Yellow" }
-      "Success" { "Green" }
-      default { "Cyan" }
-    }
+  $logMessage = "$timestamp $prefix $Message"
+  
+  # Write to console
+  if ($Verbose -or $Type -in @("Error", "Warning", "Success")) {
+    Write-Host $logMessage -ForegroundColor $(
+      switch ($Type) {
+        "Error" { "Red" }
+        "Warning" { "Yellow" }
+        "Success" { "Green" }
+        default { "Cyan" }
+      }
+    )
+  }
+  
+  # Write to log file (append)
+  try {
+    Add-Content -Path $script:logFile -Value $logMessage -ErrorAction SilentlyContinue
+  } catch {
+    # Ignore log file errors
+  }
+}
+
+function Get-UpdateCache {
+  if (-not (Test-Path $script:cacheFile)) {
+    return $null
+  }
+  
+  try {
+    $content = Get-Content $script:cacheFile -Raw | ConvertFrom-Json
+    return $content
+  } catch {
+    return $null
+  }
+}
+
+function Set-UpdateCache {
+  param(
+    [string]$LastCheck,
+    [string]$LastCommit,
+    [bool]$UpdateAvailable
   )
+  
+  $cache = @{
+    lastCheck = $LastCheck
+    lastCommit = $LastCommit
+    updateAvailable = $UpdateAvailable
+  }
+  
+  try {
+    $cache | ConvertTo-Json | Set-Content -Path $script:cacheFile -ErrorAction SilentlyContinue
+  } catch {
+    # Ignore cache errors
+  }
+}
+
+function Test-ShouldCheckUpdate {
+  if ($ForceUpdate) {
+    return $true
+  }
+  
+  if ($SkipUpdateCheck) {
+    return $false
+  }
+  
+  $cache = Get-UpdateCache
+  if (-not $cache) {
+    return $true
+  }
+  
+  try {
+    $lastCheck = [DateTime]::Parse($cache.lastCheck)
+    $elapsed = (Get-Date) - $lastCheck
+    
+    if ($elapsed.TotalSeconds -lt $script:updateCheckInterval) {
+      Write-BootstrapLog "Last check was $([int]$elapsed.TotalMinutes) minute(s) ago, skipping..." "Info"
+      return $false
+    }
+  } catch {
+    return $true
+  }
+  
+  return $true
 }
 
 function Test-GitInstalled {
   try {
     $gitCommand = Get-Command -Name git -ErrorAction Stop
+    
+    # Check Git version (minimum 2.20.0 recommended)
+    try {
+      $versionOutput = & git --version 2>$null
+      if ($versionOutput -match "(\d+)\.(\d+)\.(\d+)") {
+        $major = [int]$matches[1]
+        $minor = [int]$matches[2]
+        
+        if ($major -lt 2 -or ($major -eq 2 -and $minor -lt 20)) {
+          Write-BootstrapLog "Git version $major.$minor is old. Consider updating to 2.20+" "Warning"
+        }
+      }
+    } catch {
+      # Version check is optional
+    }
+    
     return $gitCommand
   } catch {
     Write-BootstrapLog "Git is not installed or not in PATH" "Error"
@@ -189,21 +285,58 @@ function Invoke-GitUpdate {
         Write-Host "  $change" -ForegroundColor Yellow
       }
       Write-BootstrapLog "Skipping update. Commit or stash changes first." "Warning"
+      
+      # Update cache to skip frequent checks
+      Set-UpdateCache -LastCheck (Get-Date -Format "o") -LastCommit $currentHead -UpdateAvailable $false
       return $false
     }
     
     $useAutoStash = $true
   }
   
-  # Fetch remote changes first
+  # Fetch and check if update is available BEFORE pulling
   Write-BootstrapLog "Fetching remote changes..." "Info"
   try {
     & $GitCommand.Path -C $script:repoRoot fetch 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
       Write-BootstrapLog "Git fetch failed (code: $LASTEXITCODE)" "Warning"
+      Set-UpdateCache -LastCheck (Get-Date -Format "o") -LastCommit $currentHead -UpdateAvailable $false
+      return $false
     }
   } catch {
     Write-BootstrapLog "Exception during fetch: $($_.Exception.Message)" "Warning"
+    Set-UpdateCache -LastCheck (Get-Date -Format "o") -LastCommit $currentHead -UpdateAvailable $false
+    return $false
+  }
+  
+  # Check if we're behind remote
+  $remoteBranch = $null
+  try {
+    $currentBranch = (& $GitCommand.Path -C $script:repoRoot branch --show-current 2>$null).Trim()
+    if ($currentBranch) {
+      $remoteBranch = "origin/$currentBranch"
+      
+      # Check if remote branch exists
+      $remoteExists = & $GitCommand.Path -C $script:repoRoot rev-parse --verify "$remoteBranch" 2>$null
+      if ($LASTEXITCODE -eq 0 -and $remoteExists) {
+        # Compare local and remote
+        $behind = & $GitCommand.Path -C $script:repoRoot rev-list --count HEAD..$remoteBranch 2>$null
+        $ahead = & $GitCommand.Path -C $script:repoRoot rev-list --count $remoteBranch..HEAD 2>$null
+        
+        if ($behind -and $behind -gt 0) {
+          Write-BootstrapLog "Remote has $behind new commit(s)" "Info"
+        } elseif ($ahead -and $ahead -gt 0) {
+          Write-BootstrapLog "Local is $ahead commit(s) ahead of remote" "Info"
+        } else {
+          Write-BootstrapLog "Already up to date (no remote changes)" "Success"
+          Set-UpdateCache -LastCheck (Get-Date -Format "o") -LastCommit $currentHead -UpdateAvailable $false
+          return $false
+        }
+      }
+    }
+  } catch {
+    # Continue with pull if comparison fails
+    Write-BootstrapLog "Could not compare with remote, proceeding with pull..." "Info"
   }
   
   # Try pull with --ff-only first
@@ -242,10 +375,12 @@ function Invoke-GitUpdate {
           foreach ($line in $output) {
             Write-Host "  $line" -ForegroundColor Red
           }
+          Set-UpdateCache -LastCheck (Get-Date -Format "o") -LastCommit $currentHead -UpdateAvailable $false
           return $false
         }
       } catch {
         Write-BootstrapLog "Exception during fallback pull: $($_.Exception.Message)" "Error"
+        Set-UpdateCache -LastCheck (Get-Date -Format "o") -LastCommit $currentHead -UpdateAvailable $false
         return $false
       }
     } else {
@@ -267,6 +402,7 @@ function Invoke-GitUpdate {
         Write-BootstrapLog "Authentication required. Please run 'git pull' manually." "Warning"
       }
       
+      Set-UpdateCache -LastCheck (Get-Date -Format "o") -LastCommit $currentHead -UpdateAvailable $false
       return $false
     }
   } else {
@@ -283,9 +419,28 @@ function Invoke-GitUpdate {
   
   if ($currentHead -and $newHead -and $currentHead -ne $newHead) {
     Write-BootstrapLog "Repository updated: $($currentHead.Substring(0, 7)) -> $($newHead.Substring(0, 7))" "Success"
+    Set-UpdateCache -LastCheck (Get-Date -Format "o") -LastCommit $newHead -UpdateAvailable $false
+    
+    # Show what changed
+    try {
+      $changedFiles = & $GitCommand.Path -C $script:repoRoot diff --name-only "$currentHead..$newHead" 2>$null
+      if ($changedFiles) {
+        $fileCount = ($changedFiles | Measure-Object).Count
+        Write-BootstrapLog "Updated $fileCount file(s)" "Info"
+        if ($Verbose) {
+          foreach ($file in $changedFiles) {
+            Write-Host "  - $file" -ForegroundColor Cyan
+          }
+        }
+      }
+    } catch {
+      # Ignore diff errors
+    }
+    
     return $true
   } else {
     Write-BootstrapLog "Already up to date" "Success"
+    Set-UpdateCache -LastCheck (Get-Date -Format "o") -LastCommit $currentHead -UpdateAvailable $false
     return $false
   }
 }
@@ -327,6 +482,22 @@ Write-Host ""
 Write-BootstrapLog "NO-P51 Bootstrap" "Info"
 Write-Host ""
 
+# Clean old log files (keep last 10)
+try {
+  $logFiles = Get-ChildItem -Path (Join-Path $script:repoRoot "bootstrap*.log") -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+  if ($logFiles.Count -gt 10) {
+    $logFiles | Select-Object -Skip 10 | Remove-Item -Force -ErrorAction SilentlyContinue
+  }
+} catch {
+  # Ignore cleanup errors
+}
+
+if ($SkipUpdateCheck) {
+  Write-BootstrapLog "Update check skipped (--SkipUpdateCheck)" "Warning"
+  Start-GuiApplication
+  exit 0
+}
+
 $gitCommand = Test-GitInstalled
 if (-not $gitCommand) {
   Write-BootstrapLog "Launching without update check..." "Warning"
@@ -338,6 +509,15 @@ if (-not $gitCommand) {
 if (-not (Test-GitRepository)) {
   Write-BootstrapLog "Launching without update check..." "Warning"
   Start-Sleep -Seconds 2
+  Start-GuiApplication
+  exit 0
+}
+
+# Check if we should skip update check based on cache
+if (-not (Test-ShouldCheckUpdate)) {
+  Write-BootstrapLog "Skipping update check (checked recently)" "Info"
+  Write-BootstrapLog "Use -ForceUpdate to check anyway" "Info"
+  Write-Host ""
   Start-GuiApplication
   exit 0
 }

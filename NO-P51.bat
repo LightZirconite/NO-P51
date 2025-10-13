@@ -9,5 +9,21 @@ if not exist "%BOOTSTRAP_SCRIPT%" (
   exit /b 1
 )
 
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%BOOTSTRAP_SCRIPT%"
+REM Check for command line arguments
+set SKIP_UPDATE=
+set FORCE_UPDATE=
+set VERBOSE=
+
+:parse_args
+if "%~1"=="" goto end_parse
+if /i "%~1"=="--skip-update" set SKIP_UPDATE=-SkipUpdateCheck
+if /i "%~1"=="--force-update" set FORCE_UPDATE=-ForceUpdate
+if /i "%~1"=="--verbose" set VERBOSE=-Verbose
+if /i "%~1"=="-v" set VERBOSE=-Verbose
+shift
+goto parse_args
+
+:end_parse
+
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "& '%BOOTSTRAP_SCRIPT%' %SKIP_UPDATE% %FORCE_UPDATE% %VERBOSE%"
 endlocal
