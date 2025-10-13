@@ -3,6 +3,5 @@
     "hideStrategy":  "hide",
     "hideHotkey":  "=",
     "restoreHotkey":  "Ctrl+Alt+R",
-    "iconPath":  null,
     "fallback":  null
 }

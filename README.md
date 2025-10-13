@@ -10,8 +10,8 @@ NO-P51 est un utilitaire Windows portable qui permet de masquer rapidement une a
 - Sélection de la stratégie de masquage : simple dissimulation ou tentative de terminaison immédiate, selon les autorisations disponibles.
 - Deux touches de raccourci indépendantes : l'une pour masquer, l'autre pour restaurer.
 - Bouton de repli rapide (flèche) pour masquer immédiatement le panneau de contrôle dans la zone de notification.
-- Icône personnalisée dans la zone de notification, avec menu contextuel (ouvrir l'interface / quitter complètement).
-- Chargement automatique du logo `logo.png` pour l'icône du panneau et du tray (personnalisable).
+- Icône dédiée dans la zone de notification, avec menu contextuel (ouvrir l'interface / quitter complètement).
+- Chargement automatique du logo `logo.png` fourni avec l'application pour l'icône du panneau et du tray.
 - Action "Kill target now" pour forcer l'arrêt de l'application choisie, sans passer par les raccourcis.
 - Bouton "Exit NO-P51" pour fermer complètement l'outil (service, UI, lanceur) en un clic.
 - Redémarrage automatique du service en arrière-plan en cas de plantage, avec notifications discrètes.

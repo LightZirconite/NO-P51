@@ -54,9 +54,6 @@ $script:pendingServiceRestart = $false
 $script:serviceRestartCountdown = 0
 $script:userStopRequested = $false
 $script:repoRoot = Split-Path -Parent $PSScriptRoot
-$script:preferredIconPath = $null
-$script:resolvedIconPath = $null
-$script:logoPreviewImage = $null
 $script:autoSaveTimer = $null
 $script:uiControls = $null
 
@@ -66,7 +63,6 @@ function New-Nop51DefaultConfig {
     hideStrategy = "hide"
     hideHotkey = "="
     restoreHotkey = "Ctrl+Alt+R"
-  iconPath = "logo.png"
     fallback = $null
   }
 }
@@ -85,31 +81,33 @@ function Get-Nop51AppIcon {
     return $icon
   }
 
-  $resolvedPath = Resolve-Nop51IconPath -RequestedPath $script:preferredIconPath
-  $script:resolvedIconPath = $resolvedPath
+  $logoPath = $null
+  if ($script:repoRoot) {
+    $logoPath = Join-Path -Path $script:repoRoot -ChildPath "logo.png"
+  }
 
-  if ($resolvedPath -and (Test-Path -LiteralPath $resolvedPath)) {
-    $logo = $null
+  if ($logoPath -and (Test-Path -LiteralPath $logoPath -PathType Leaf)) {
+    $logoImage = $null
     $bitmap = $null
     $graphics = $null
     try {
-      $logo = [System.Drawing.Image]::FromFile($resolvedPath)
+      $logoImage = [System.Drawing.Image]::FromFile($logoPath)
       $bitmap = New-Object System.Drawing.Bitmap $size, $size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb
       $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
       $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
       $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
       $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
       $graphics.Clear([System.Drawing.Color]::Transparent)
-      $graphics.DrawImage($logo, [System.Drawing.Rectangle]::new(0, 0, $size, $size))
+      $graphics.DrawImage($logoImage, [System.Drawing.Rectangle]::new(0, 0, $size, $size))
 
       $script:customIcon = & $createIconFromBitmap $bitmap
       return $script:customIcon
     } catch {
-      # fall back below
+      # fall back to generated icon
     } finally {
       if ($graphics) { $graphics.Dispose() }
       if ($bitmap) { $bitmap.Dispose() }
-      if ($logo) { $logo.Dispose() }
+      if ($logoImage) { $logoImage.Dispose() }
     }
   }
 
@@ -117,80 +115,6 @@ function Get-Nop51AppIcon {
   $script:customIcon = & $createIconFromBitmap $bitmapFallback
   $bitmapFallback.Dispose()
   return $script:customIcon
-}
-
-function Resolve-Nop51IconPath {
-  param(
-    [string]$RequestedPath
-  )
-
-  $candidates = @()
-  if (-not [string]::IsNullOrWhiteSpace($RequestedPath)) {
-    $candidate = $RequestedPath.Trim()
-    if (-not [System.IO.Path]::IsPathRooted($candidate) -and $script:repoRoot) {
-      $candidate = Join-Path -Path $script:repoRoot -ChildPath $candidate
-    }
-    try {
-      $candidate = [System.IO.Path]::GetFullPath($candidate)
-    } catch {
-      $candidate = $null
-    }
-    if ($candidate) {
-      $candidates += $candidate
-    }
-  }
-
-  if ($script:repoRoot) {
-    $defaultNames = @("logo.png", "logo.ico")
-    foreach ($name in $defaultNames) {
-      $defaultPath = Join-Path -Path $script:repoRoot -ChildPath $name
-      if (-not ($candidates -contains $defaultPath)) {
-        $candidates += $defaultPath
-      }
-    }
-  }
-
-  foreach ($candidatePath in $candidates) {
-    if ($candidatePath -and (Test-Path -LiteralPath $candidatePath -PathType Leaf)) {
-      return $candidatePath
-    }
-  }
-
-  return $null
-}
-
-function Convert-Nop51PathToConfigValue {
-  param(
-    [string]$FullPath
-  )
-
-  if ([string]::IsNullOrWhiteSpace($FullPath)) {
-    return $null
-  }
-
-  $normalized = $FullPath
-  try {
-    $normalized = [System.IO.Path]::GetFullPath($FullPath)
-  } catch {
-    return $FullPath
-  }
-
-  if ($script:repoRoot) {
-    try {
-      $base = New-Object System.Uri(($script:repoRoot.TrimEnd([char]'\', [char]'/' ) + [System.IO.Path]::DirectorySeparatorChar))
-      $target = New-Object System.Uri($normalized)
-      if ($base.IsBaseOf($target)) {
-        $relative = $base.MakeRelativeUri($target).ToString()
-        if ($relative) {
-          return $relative.Replace('/', [System.IO.Path]::DirectorySeparatorChar)
-        }
-      }
-    } catch {
-      # fall back to absolute path
-    }
-  }
-
-  return $normalized
 }
 
 function New-Nop51FallbackBitmap {
@@ -254,42 +178,7 @@ function Reset-Nop51AppIcon {
     [Win32.NativeMethods]::DestroyIcon($script:customIconHandle) | Out-Null
     $script:customIconHandle = [IntPtr]::Zero
   }
-  $script:resolvedIconPath = $null
 }
-
-function Update-Nop51LogoPreview {
-  param(
-    [string]$ResolvedPath
-  )
-
-  if (-not $script:uiControls -or -not $script:uiControls.LogoPicture) {
-    return
-  }
-
-  $pictureBox = $script:uiControls.LogoPicture
-
-  if ($script:logoPreviewImage) {
-    try { $script:logoPreviewImage.Dispose() } catch { }
-    $script:logoPreviewImage = $null
-  }
-
-  $imageToDisplay = $null
-  if ($ResolvedPath -and (Test-Path -LiteralPath $ResolvedPath -PathType Leaf)) {
-    try {
-      $imageToDisplay = [System.Drawing.Image]::FromFile($ResolvedPath)
-    } catch {
-      $imageToDisplay = $null
-    }
-  }
-
-  if (-not $imageToDisplay) {
-    $imageToDisplay = New-Nop51FallbackBitmap -Size 96
-  }
-
-  $script:logoPreviewImage = $imageToDisplay
-  $pictureBox.Image = $script:logoPreviewImage
-}
-
 function Apply-Nop51IconToUi {
   $icon = Get-Nop51AppIcon
   if ($icon -and $form) {
@@ -298,36 +187,6 @@ function Apply-Nop51IconToUi {
   if ($icon -and $script:uiControls -and $script:uiControls.TrayIcon) {
     $script:uiControls.TrayIcon.Icon = $icon
   }
-  Update-Nop51LogoPreview -ResolvedPath $script:resolvedIconPath
-}
-
-function Use-Nop51IconFromConfig {
-  param(
-    [psobject]$Config
-  )
-
-  $newValue = $null
-  if ($Config -and $Config.PSObject.Properties.Name -contains "iconPath") {
-    $candidate = $Config.iconPath
-    if (-not [string]::IsNullOrWhiteSpace($candidate)) {
-      $newValue = $candidate.ToString()
-    }
-  }
-
-  $script:preferredIconPath = $newValue
-  Reset-Nop51AppIcon
-  Apply-Nop51IconToUi
-}
-
-function Refresh-Nop51IconPreviewFromTextBox {
-  if (-not $script:uiControls -or -not $script:uiControls.LogoPathText) {
-    return
-  }
-
-  $rawValue = $script:uiControls.LogoPathText.Text
-  $trimmedValue = if ($rawValue) { $rawValue.Trim() } else { "" }
-  $previewConfig = [pscustomobject]@{ iconPath = if ([string]::IsNullOrWhiteSpace($trimmedValue)) { $null } else { $trimmedValue } }
-  Use-Nop51IconFromConfig -Config $previewConfig
 }
 
 function Get-Nop51RunningProcessItems {
@@ -439,7 +298,6 @@ function Save-Nop51ConfigFromForm {
     [System.Windows.Forms.TextBox]$TargetTextBox,
     [System.Windows.Forms.TextBox]$HideHotKeyTextBox,
     [System.Windows.Forms.TextBox]$RestoreHotKeyTextBox,
-    [System.Windows.Forms.TextBox]$LogoPathTextBox,
     [System.Windows.Forms.CheckBox]$UsePidCheckbox,
     [System.Windows.Forms.ComboBox]$HideStrategyCombo,
     [System.Windows.Forms.RadioButton]$FallbackNone,
@@ -482,32 +340,6 @@ function Save-Nop51ConfigFromForm {
     $hideStrategy = "hide"
   }
 
-  $iconPathValue = $null
-  if ($LogoPathTextBox) {
-    $iconPathInput = $LogoPathTextBox.Text.Trim()
-    if (-not [string]::IsNullOrWhiteSpace($iconPathInput)) {
-      $candidate = $iconPathInput
-      if (-not [System.IO.Path]::IsPathRooted($candidate) -and $script:repoRoot) {
-        $candidate = Join-Path -Path $script:repoRoot -ChildPath $candidate
-      }
-      try {
-        $resolved = (Resolve-Path -LiteralPath $candidate -ErrorAction Stop).ProviderPath
-      } catch {
-        throw "Logo file not found at '$iconPathInput'."
-      }
-
-      $extension = [System.IO.Path]::GetExtension($resolved)
-      if ($extension) {
-        $extension = $extension.ToLowerInvariant()
-      }
-      if ($extension -notin @('.png', '.ico')) {
-        throw "Logo file must be a .png or .ico image."
-      }
-
-      $iconPathValue = Convert-Nop51PathToConfigValue -FullPath $resolved
-    }
-  }
-
   $fallback = $null
   if ($FallbackApp.Checked -or $FallbackUrl.Checked) {
     $value = $FallbackValueTextBox.Text.Trim()
@@ -528,7 +360,6 @@ function Save-Nop51ConfigFromForm {
     hideStrategy = $hideStrategy
     hideHotkey = $hideHotKey
     restoreHotkey = $restoreHotKey
-    iconPath = $iconPathValue
     fallback = $fallback
   }
 
@@ -536,8 +367,6 @@ function Save-Nop51ConfigFromForm {
 
   $json = Convert-Nop51ToJson -InputObject $configObject -Depth 6
   Set-Content -LiteralPath $ConfigPath -Value $json -Encoding UTF8
-
-  Use-Nop51IconFromConfig -Config $configObject
 
   return $configObject
 }
@@ -551,7 +380,7 @@ function Invoke-Nop51SaveConfigFromUi {
     return $null
   }
 
-  $config = Save-Nop51ConfigFromForm -TargetTextBox $script:uiControls.TargetText -HideHotKeyTextBox $script:uiControls.HideHotkeyText -RestoreHotKeyTextBox $script:uiControls.RestoreHotkeyText -LogoPathTextBox $script:uiControls.LogoPathText -UsePidCheckbox $script:uiControls.UsePidCheckbox -HideStrategyCombo $script:uiControls.HideStrategyCombo -FallbackNone $script:uiControls.FallbackNone -FallbackApp $script:uiControls.FallbackApp -FallbackUrl $script:uiControls.FallbackUrl -FallbackValueTextBox $script:uiControls.FallbackValueText -FallbackAutoClose $script:uiControls.FallbackAutoClose -FallbackFullscreen $script:uiControls.FallbackFullscreen
+  $config = Save-Nop51ConfigFromForm -TargetTextBox $script:uiControls.TargetText -HideHotKeyTextBox $script:uiControls.HideHotkeyText -RestoreHotKeyTextBox $script:uiControls.RestoreHotkeyText -UsePidCheckbox $script:uiControls.UsePidCheckbox -HideStrategyCombo $script:uiControls.HideStrategyCombo -FallbackNone $script:uiControls.FallbackNone -FallbackApp $script:uiControls.FallbackApp -FallbackUrl $script:uiControls.FallbackUrl -FallbackValueTextBox $script:uiControls.FallbackValueText -FallbackAutoClose $script:uiControls.FallbackAutoClose -FallbackFullscreen $script:uiControls.FallbackFullscreen
 
   if (-not $Silent) {
     Update-Nop51ConfigStatus "Configuration saved"
@@ -607,21 +436,6 @@ function Test-Nop51FormReady {
     $fallbackValue = $script:uiControls.FallbackValueText.Text.Trim()
     if ([string]::IsNullOrWhiteSpace($fallbackValue)) {
       return $false
-    }
-  }
-
-  if ($script:uiControls.LogoPathText) {
-    $iconValue = $script:uiControls.LogoPathText.Text.Trim()
-    if ($iconValue) {
-      try {
-        $resolved = $iconValue
-        if (-not [System.IO.Path]::IsPathRooted($resolved) -and $script:repoRoot) {
-          $resolved = Join-Path -Path $script:repoRoot -ChildPath $resolved
-        }
-        [void](Resolve-Path -LiteralPath $resolved -ErrorAction Stop)
-      } catch {
-        return $false
-      }
     }
   }
 
@@ -1098,7 +912,7 @@ $targetGroup.Controls.Add($usePidCheckbox)
 
 $targetHintLabel = New-Object System.Windows.Forms.Label
 $targetHintLabel.Location = New-Object System.Drawing.Point 270, 190
-$targetHintLabel.MaximumSize = New-Object System.Drawing.Size 150, 0
+$targetHintLabel.MaximumSize = New-Object System.Drawing.Size 200, 0
 $targetHintLabel.AutoSize = $true
 $targetHintLabel.ForeColor = [System.Drawing.Color]::FromArgb(80, 80, 80)
 $targetHintLabel.Text = "Tip: prefer the executable name (.exe) for stability. Process IDs change every launch."
@@ -1122,7 +936,7 @@ $targetGroup.Controls.Add($hideStrategyCombo)
 
 $hideStrategyWarningLabel = New-Object System.Windows.Forms.Label
 $hideStrategyWarningLabel.Location = New-Object System.Drawing.Point 270, 270
-$hideStrategyWarningLabel.MaximumSize = New-Object System.Drawing.Size 150, 0
+$hideStrategyWarningLabel.MaximumSize = New-Object System.Drawing.Size 200, 0
 $hideStrategyWarningLabel.AutoSize = $true
 $targetGroup.Controls.Add($hideStrategyWarningLabel)
 
@@ -1172,70 +986,15 @@ $restoreHotkeyText.TabStop = $true
 $hotkeyGroup.Controls.Add($restoreHotkeyText)
 
 $hotkeyHint = New-Object System.Windows.Forms.Label
-$hotkeyHint.Text = "Click a box, then press the key combination"
+$hotkeyHint.Text = "Click a box, then press the shortcut"
 $hotkeyHint.Location = New-Object System.Drawing.Point 280, 35
 $hotkeyHint.AutoSize = $true
 $hotkeyGroup.Controls.Add($hotkeyHint)
 
-$brandingGroup = New-Object System.Windows.Forms.GroupBox
-$brandingGroup.Text = "Branding"
-$brandingGroup.Font = [System.Drawing.Font]::new("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Bold)
-$brandingGroup.Location = New-Object System.Drawing.Point 440, 205
-$brandingGroup.Size = New-Object System.Drawing.Size 410, 200
-$brandingGroup.BackColor = [System.Drawing.Color]::White
-$brandingGroup.ForeColor = [System.Drawing.Color]::FromArgb(30, 41, 59)
-$form.Controls.Add($brandingGroup)
-
-$logoPathLabel = New-Object System.Windows.Forms.Label
-$logoPathLabel.Text = "Logo path (.png / .ico, default: logo.png)"
-$logoPathLabel.Location = New-Object System.Drawing.Point 15, 30
-$logoPathLabel.AutoSize = $true
-$brandingGroup.Controls.Add($logoPathLabel)
-
-$logoPathText = New-Object System.Windows.Forms.TextBox
-$logoPathText.Location = New-Object System.Drawing.Point 15, 55
-$logoPathText.Size = New-Object System.Drawing.Size 250, 26
-$brandingGroup.Controls.Add($logoPathText)
-
-$logoBrowseButton = New-Object System.Windows.Forms.Button
-$logoBrowseButton.Text = "Browse..."
-$logoBrowseButton.Location = New-Object System.Drawing.Point 275, 53
-$logoBrowseButton.Size = New-Object System.Drawing.Size 90, 30
-$logoBrowseButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$logoBrowseButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(203, 213, 225)
-$logoBrowseButton.BackColor = [System.Drawing.Color]::FromArgb(241, 245, 249)
-$logoBrowseButton.ForeColor = [System.Drawing.Color]::FromArgb(51, 65, 85)
-$logoBrowseButton.Cursor = [System.Windows.Forms.Cursors]::Hand
-$brandingGroup.Controls.Add($logoBrowseButton)
-
-$logoClearButton = New-Object System.Windows.Forms.Button
-$logoClearButton.Text = "Clear"
-$logoClearButton.Location = New-Object System.Drawing.Point 275, 90
-$logoClearButton.Size = New-Object System.Drawing.Size 90, 30
-$logoClearButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$logoClearButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(203, 213, 225)
-$logoClearButton.BackColor = [System.Drawing.Color]::FromArgb(249, 250, 251)
-$logoClearButton.ForeColor = [System.Drawing.Color]::FromArgb(75, 85, 99)
-$logoClearButton.Cursor = [System.Windows.Forms.Cursors]::Hand
-$brandingGroup.Controls.Add($logoClearButton)
-
-$logoPreviewLabel = New-Object System.Windows.Forms.Label
-$logoPreviewLabel.Text = "Preview"
-$logoPreviewLabel.Location = New-Object System.Drawing.Point 315, 80
-$logoPreviewLabel.AutoSize = $true
-$brandingGroup.Controls.Add($logoPreviewLabel)
-
-$logoPicture = New-Object System.Windows.Forms.PictureBox
-$logoPicture.Location = New-Object System.Drawing.Point 315, 100
-$logoPicture.Size = New-Object System.Drawing.Size 72, 72
-$logoPicture.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
-$logoPicture.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
-$brandingGroup.Controls.Add($logoPicture)
-
 $fallbackGroup = New-Object System.Windows.Forms.GroupBox
 $fallbackGroup.Text = "Fallback action"
 $fallbackGroup.Font = [System.Drawing.Font]::new("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Bold)
-$fallbackGroup.Location = New-Object System.Drawing.Point 10, 400
+$fallbackGroup.Location = New-Object System.Drawing.Point 10, 390
 $fallbackGroup.Size = New-Object System.Drawing.Size 840, 140
 $fallbackGroup.BackColor = [System.Drawing.Color]::White
 $fallbackGroup.ForeColor = [System.Drawing.Color]::FromArgb(30, 41, 59)
@@ -1283,15 +1042,11 @@ $fallbackFullscreen.Location = New-Object System.Drawing.Point 520, 85
 $fallbackFullscreen.AutoSize = $true
 $fallbackGroup.Controls.Add($fallbackFullscreen)
 $toolTip.SetToolTip($fallbackFullscreen, "Send F11 when the fallback window appears to cover the screen quickly.")
-$toolTip.SetToolTip($logoPathText, "Use a .png or .ico file. Relative paths are resolved from the NO-P51 folder.")
-$toolTip.SetToolTip($logoBrowseButton, "Select an image to use for the tray icon and preview.")
-$toolTip.SetToolTip($logoClearButton, "Reset to the bundled logo.")
-$toolTip.SetToolTip($logoPicture, "Current icon preview.")
 
 $saveButton = New-Object System.Windows.Forms.Button
 $saveButton.Text = "Save configuration"
 $saveButton.Font = [System.Drawing.Font]::new("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-$saveButton.Location = New-Object System.Drawing.Point 10, 570
+$saveButton.Location = New-Object System.Drawing.Point 10, 520
 $saveButton.Size = New-Object System.Drawing.Size 160, 35
 $saveButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $saveButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(34, 197, 94)
@@ -1303,7 +1058,7 @@ $form.Controls.Add($saveButton)
 $startButton = New-Object System.Windows.Forms.Button
 $startButton.Text = "▶ Start service"
 $startButton.Font = [System.Drawing.Font]::new("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-$startButton.Location = New-Object System.Drawing.Point 190, 570
+$startButton.Location = New-Object System.Drawing.Point 190, 520
 $startButton.Size = New-Object System.Drawing.Size 140, 35
 $startButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $startButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(59, 130, 246)
@@ -1315,7 +1070,7 @@ $form.Controls.Add($startButton)
 $killTargetButton = New-Object System.Windows.Forms.Button
 $killTargetButton.Text = "Kill target"
 $killTargetButton.Font = [System.Drawing.Font]::new("Segoe UI", 9)
-$killTargetButton.Location = New-Object System.Drawing.Point 360, 570
+$killTargetButton.Location = New-Object System.Drawing.Point 360, 520
 $killTargetButton.Size = New-Object System.Drawing.Size 120, 35
 $killTargetButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $killTargetButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(239, 68, 68)
@@ -1327,7 +1082,7 @@ $form.Controls.Add($killTargetButton)
 $exitAppButton = New-Object System.Windows.Forms.Button
 $exitAppButton.Text = "Exit"
 $exitAppButton.Font = [System.Drawing.Font]::new("Segoe UI", 9)
-$exitAppButton.Location = New-Object System.Drawing.Point 700, 570
+$exitAppButton.Location = New-Object System.Drawing.Point 700, 520
 $exitAppButton.Size = New-Object System.Drawing.Size 100, 35
 $exitAppButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $exitAppButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(156, 163, 175)
@@ -1342,7 +1097,7 @@ $statusLabel = New-Object System.Windows.Forms.Label
 $statusLabel.Text = "Service stopped"
 $statusLabel.Font = [System.Drawing.Font]::new("Segoe UI Semibold", 9, [System.Drawing.FontStyle]::Bold)
 $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 116, 139)
-$statusLabel.Location = New-Object System.Drawing.Point 10, 540
+$statusLabel.Location = New-Object System.Drawing.Point 10, 490
 $statusLabel.AutoSize = $true
 $form.Controls.Add($statusLabel)
 
@@ -1350,7 +1105,7 @@ $configStatusLabel = New-Object System.Windows.Forms.Label
 $configStatusLabel.Text = ""
 $configStatusLabel.Font = [System.Drawing.Font]::new("Segoe UI", 8)
 $configStatusLabel.ForeColor = [System.Drawing.Color]::FromArgb(107, 114, 128)
-$configStatusLabel.Location = New-Object System.Drawing.Point 10, 605
+$configStatusLabel.Location = New-Object System.Drawing.Point 10, 560
 $configStatusLabel.AutoSize = $true
 $form.Controls.Add($configStatusLabel)
 
@@ -1389,10 +1144,6 @@ $script:uiControls = [pscustomobject]@{
   PrivilegeStatusLabel = $privilegeStatusLabel
   HideHotkeyText = $hideHotkeyText
   RestoreHotkeyText = $restoreHotkeyText
-  LogoPathText = $logoPathText
-  LogoBrowseButton = $logoBrowseButton
-  LogoClearButton = $logoClearButton
-  LogoPicture = $logoPicture
   FallbackNone = $fallbackNone
   FallbackApp = $fallbackApp
   FallbackUrl = $fallbackUrl
@@ -1498,19 +1249,6 @@ function Populate-FormFromConfig {
       $script:uiControls.RestoreHotkeyText.Text = "Ctrl+Alt+R"
     }
 
-    if ($script:uiControls.LogoPathText) {
-      if ($Config.PSObject.Properties.Name -contains "iconPath" -and $Config.iconPath) {
-        $script:uiControls.LogoPathText.Text = $Config.iconPath.ToString()
-      } else {
-        $defaultLogo = Resolve-Nop51IconPath -RequestedPath "logo.png"
-        if ($defaultLogo) {
-          $script:uiControls.LogoPathText.Text = "logo.png"
-        } else {
-          $script:uiControls.LogoPathText.Text = ""
-        }
-      }
-    }
-
     if ($Config.fallback) {
       $mode = $Config.fallback.mode.ToString().ToLowerInvariant()
       switch ($mode) {
@@ -1556,7 +1294,6 @@ function Populate-FormFromConfig {
     }
   }
   finally {
-    Refresh-Nop51IconPreviewFromTextBox
     Update-FallbackControls
     Update-HideStrategyWarning
     $script:isLoadingConfig = $false
@@ -1719,20 +1456,6 @@ $refreshProcessesButton.add_MouseLeave({
   $refreshProcessesButton.BackColor = [System.Drawing.Color]::FromArgb(241, 245, 249)
 })
 
-$logoBrowseButton.add_MouseEnter({
-  $logoBrowseButton.BackColor = [System.Drawing.Color]::FromArgb(226, 232, 240)
-})
-$logoBrowseButton.add_MouseLeave({
-  $logoBrowseButton.BackColor = [System.Drawing.Color]::FromArgb(241, 245, 249)
-})
-
-$logoClearButton.add_MouseEnter({
-  $logoClearButton.BackColor = [System.Drawing.Color]::FromArgb(229, 231, 235)
-})
-$logoClearButton.add_MouseLeave({
-  $logoClearButton.BackColor = [System.Drawing.Color]::FromArgb(249, 250, 251)
-})
-
 $refreshProcessesButton.add_Click({ Refresh-ProcessList -PreserveSelection })
 
 $script:uiControls.FallbackNone.add_CheckedChanged({
@@ -1777,43 +1500,6 @@ $fallbackFullscreen.add_CheckedChanged({
     return
   }
   Set-Nop51ConfigDirty -SyncNow
-})
-
-$logoPathText.add_TextChanged({
-  if ($script:isLoadingConfig) {
-    return
-  }
-  Refresh-Nop51IconPreviewFromTextBox
-  Set-Nop51ConfigDirty
-})
-
-$logoPathText.add_Leave({
-  if ($script:isLoadingConfig) {
-    return
-  }
-  Refresh-Nop51IconPreviewFromTextBox
-  Set-Nop51ConfigDirty -SyncNow
-})
-
-$logoBrowseButton.add_Click({
-  $dialog = New-Object System.Windows.Forms.OpenFileDialog
-  $dialog.Filter = "PNG or ICO|*.png;*.ico|All files|*.*"
-  if ($script:resolvedIconPath -and (Test-Path -LiteralPath $script:resolvedIconPath)) {
-    $dialog.InitialDirectory = [System.IO.Path]::GetDirectoryName($script:resolvedIconPath)
-  } elseif ($script:repoRoot -and (Test-Path -LiteralPath $script:repoRoot)) {
-    $dialog.InitialDirectory = $script:repoRoot
-  }
-
-  if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-    $logoPathText.Text = $dialog.FileName
-  }
-})
-
-$logoClearButton.add_Click({
-  if ($logoPathText.Text.Length -eq 0) {
-    return
-  }
-  $logoPathText.Text = ""
 })
 
 $hideHotkeyText.add_KeyDown({ Handle-HotkeyKeyDown -TextBox $script:uiControls.HideHotkeyText -EventArgs $_ })
@@ -1978,8 +1664,8 @@ $form.add_FormClosing({
 $form.add_Shown({
   Refresh-ProcessList -PreserveSelection
   $config = Read-Nop51ConfigOrDefault
-  Use-Nop51IconFromConfig -Config $config
   Populate-FormFromConfig -Config $config
+  Apply-Nop51IconToUi
   Update-Nop51ServiceUi -StartButton $script:uiControls.StartButton -StatusLabel $script:uiControls.StatusLabel
   Update-Nop51ConfigStatus "Configuration loaded"
   $script:uiControls.ServiceMonitor.Start()
@@ -1997,14 +1683,7 @@ $form.add_FormClosed({
     try { $script:autoSaveTimer.Dispose() } catch { }
     $script:autoSaveTimer = $null
   }
-  if ($script:customIconHandle -ne [IntPtr]::Zero) {
-    [Win32.NativeMethods]::DestroyIcon($script:customIconHandle) | Out-Null
-    $script:customIconHandle = [IntPtr]::Zero
-  }
-  if ($script:customIcon) {
-    try { $script:customIcon.Dispose() } catch { }
-    $script:customIcon = $null
-  }
+  Reset-Nop51AppIcon
 })
 
 if ($MyInvocation.InvocationName -eq ".") {
