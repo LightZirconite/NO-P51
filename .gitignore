@@ -1,0 +1,13 @@
+# User-specific configuration and runtime artifacts
+config.json
+config.local.json
+
+# Logs and caches
+bootstrap.log
+.update-cache
+logs/
+
+# Temporary or backup files
+*.bak
+*.tmp
+~*

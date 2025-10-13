@@ -166,7 +166,7 @@ function Get-GitStatus {
       $statusLines = @($statusOutput.ToString().Trim())
     }
     
-    return $statusLines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  return @($statusLines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
   } catch {
     Write-BootstrapLog "Exception getting Git status: $($_.Exception.Message)" "Warning"
     return $null
