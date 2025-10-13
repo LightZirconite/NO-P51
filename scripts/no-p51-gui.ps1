@@ -7,6 +7,8 @@ $ErrorActionPreference = "Stop"
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName WindowsBase
+Add-Type -AssemblyName PresentationCore
 Add-Type -Namespace Win32 -Name NativeMethods -MemberDefinition @"
   [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError=true)]
   public static extern bool DestroyIcon(System.IntPtr hIcon);
@@ -56,6 +58,8 @@ $script:userStopRequested = $false
 $script:repoRoot = Split-Path -Parent $PSScriptRoot
 $script:autoSaveTimer = $null
 $script:uiControls = $null
+$script:soundLibrary = @{}
+$script:activeSounds = @()
 
 function New-Nop51DefaultConfig {
   return [pscustomobject]@{
@@ -64,6 +68,11 @@ function New-Nop51DefaultConfig {
     hideHotkey = "="
     restoreHotkey = "Ctrl+Alt+R"
     fallback = $null
+    sounds = [pscustomobject]@{
+      notification = $null
+      click = $null
+      autoPlayOnStart = $false
+    }
   }
 }
 
@@ -189,6 +198,362 @@ function Apply-Nop51IconToUi {
   }
 }
 
+function Get-Nop51SoundDirectory {
+  if (-not $script:repoRoot) {
+    return $null
+  }
+  $assetsPath = Join-Path -Path $script:repoRoot -ChildPath "assets"
+  return Join-Path -Path $assetsPath -ChildPath "sounds"
+}
+
+function Update-Nop51SoundStatus {
+  param(
+    [string]$Message
+  )
+
+  if (-not $script:uiControls -or -not $script:uiControls.SoundStatusLabel) {
+    return
+  }
+
+  $script:uiControls.SoundStatusLabel.Text = $Message
+}
+
+function Update-Nop51SoundButtons {
+  if (-not $script:uiControls) {
+    return
+  }
+
+  if ($script:uiControls.NotificationPreviewButton) {
+    $hasSelection = $false
+    if ($script:uiControls.NotificationSoundCombo -and $script:uiControls.NotificationSoundCombo.SelectedItem) {
+      $hasSelection = $true
+    }
+    $script:uiControls.NotificationPreviewButton.Enabled = $hasSelection
+  }
+
+  if ($script:uiControls.ClickPreviewButton) {
+    $hasSelection = $false
+    if ($script:uiControls.ClickSoundCombo -and $script:uiControls.ClickSoundCombo.SelectedItem) {
+      $hasSelection = $true
+    }
+    $script:uiControls.ClickPreviewButton.Enabled = $hasSelection
+  }
+
+  if ($script:uiControls.StopSoundButton) {
+    $script:uiControls.StopSoundButton.Enabled = ($script:activeSounds -and $script:activeSounds.Count -gt 0)
+  }
+}
+
+function Remove-Nop51SoundInstance {
+  param(
+    [System.Windows.Media.MediaPlayer]$Player,
+    [string]$Reason = $null
+  )
+
+  if (-not $Player) {
+    return
+  }
+
+  $removedEntry = $null
+  if ($script:activeSounds -and $script:activeSounds.Count -gt 0) {
+    $removedEntry = $script:activeSounds | Where-Object { $_.Player -eq $Player } | Select-Object -First 1
+    $script:activeSounds = @($script:activeSounds | Where-Object { $_.Player -ne $Player })
+  }
+
+  if ($removedEntry) {
+    try { $Player.remove_MediaEnded($removedEntry.EndedHandler) } catch { }
+    try { $Player.remove_MediaFailed($removedEntry.FailedHandler) } catch { }
+  }
+
+  try { $Player.Stop() } catch { }
+  try { $Player.Close() } catch { }
+
+  Update-Nop51SoundButtons
+
+  if ($Reason) {
+    Update-Nop51SoundStatus $Reason
+  } elseif ($removedEntry -and (-not $script:activeSounds -or $script:activeSounds.Count -eq 0)) {
+    Update-Nop51SoundStatus "Playback finished: $($removedEntry.Name)"
+  }
+}
+
+function Stop-Nop51ActiveSounds {
+  if (-not $script:activeSounds -or $script:activeSounds.Count -eq 0) {
+    Update-Nop51SoundButtons
+    return
+  }
+
+  foreach ($entry in @($script:activeSounds)) {
+    Remove-Nop51SoundInstance -Player $entry.Player -Reason "Playback stopped"
+  }
+
+  Update-Nop51SoundStatus "Playback stopped"
+  Update-Nop51SoundButtons
+}
+
+function Play-Nop51Sound {
+  param(
+    [string]$Path,
+    [string]$DisplayName
+  )
+
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    throw "Audio file not found at '$Path'."
+  }
+
+  $player = [System.Windows.Media.MediaPlayer]::new()
+  $endedHandler = {
+    param($sender, $eventArgs)
+    Remove-Nop51SoundInstance -Player $sender
+  }
+  $failedHandler = {
+    param($sender, $eventArgs)
+    $message = "Playback failed"
+    if ($eventArgs -and $eventArgs.ErrorException) {
+      $message = "Playback failed: $($eventArgs.ErrorException.Message)"
+    }
+    Remove-Nop51SoundInstance -Player $sender -Reason $message
+  }
+
+  $entry = [pscustomobject]@{
+    Player = $player
+    Name = $DisplayName
+    EndedHandler = $endedHandler
+    FailedHandler = $failedHandler
+  }
+
+  $script:activeSounds += $entry
+
+  $player.add_MediaEnded($endedHandler)
+  $player.add_MediaFailed($failedHandler)
+  $player.Open([Uri]::new($Path))
+  $player.Volume = 1.0
+  $player.Play()
+
+  Update-Nop51SoundButtons
+  return $entry
+}
+
+function Get-Nop51SoundPathByName {
+  param(
+    [string]$Name
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Name)) {
+    return $null
+  }
+
+  if (-not $script:soundLibrary.ContainsKey($Name)) {
+    return $null
+  }
+
+  return $script:soundLibrary[$Name]
+}
+
+function Invoke-Nop51PreviewSound {
+  param(
+    [System.Windows.Forms.ComboBox]$Combo,
+    [string]$Context
+  )
+
+  if (-not $Combo -or -not $Combo.SelectedItem) {
+    return
+  }
+
+  $selectedName = [string]$Combo.SelectedItem
+  $path = Get-Nop51SoundPathByName -Name $selectedName
+  if (-not $path) {
+    Update-Nop51SoundStatus "$Context sound not found: $selectedName"
+    Update-Nop51SoundButtons
+    return
+  }
+
+  try {
+    Stop-Nop51ActiveSounds
+    Play-Nop51Sound -Path $path -DisplayName $selectedName | Out-Null
+    if ($Context) {
+      Update-Nop51SoundStatus "Playing $Context: $selectedName"
+    } else {
+      Update-Nop51SoundStatus "Playing: $selectedName"
+    }
+  } catch {
+    Stop-Nop51ActiveSounds
+    Update-Nop51SoundStatus "Playback failed: $($_.Exception.Message)"
+  }
+}
+
+function Load-Nop51SoundLibrary {
+  $soundDir = Get-Nop51SoundDirectory
+  if (-not $soundDir) {
+    Update-Nop51SoundStatus "Sound directory unavailable."
+    return
+  }
+
+  if (-not (Test-Path -LiteralPath $soundDir -PathType Container)) {
+    try {
+      New-Item -ItemType Directory -Path $soundDir -Force | Out-Null
+    } catch {
+      Update-Nop51SoundStatus "Cannot create sound directory: $($_.Exception.Message)"
+      return
+    }
+  }
+
+  $previousSelections = @{}
+  if ($script:uiControls) {
+    if ($script:uiControls.NotificationSoundCombo -and $script:uiControls.NotificationSoundCombo.SelectedItem) {
+      $previousSelections["notification"] = $script:uiControls.NotificationSoundCombo.SelectedItem
+    }
+    if ($script:uiControls.ClickSoundCombo -and $script:uiControls.ClickSoundCombo.SelectedItem) {
+      $previousSelections["click"] = $script:uiControls.ClickSoundCombo.SelectedItem
+    }
+  }
+
+  Stop-Nop51ActiveSounds
+
+  $script:soundLibrary.Clear()
+  $supportedExtensions = @(".wav", ".mp3", ".wma", ".aac", ".m4a", ".flac", ".ogg")
+  $files = Get-ChildItem -LiteralPath $soundDir -File -ErrorAction SilentlyContinue | Where-Object {
+    $supportedExtensions -contains $_.Extension.ToLowerInvariant()
+  } | Sort-Object -Property Name
+
+  foreach ($file in $files) {
+    $script:soundLibrary[$file.BaseName] = $file.FullName
+  }
+
+  $sortedKeys = @($script:soundLibrary.Keys | Sort-Object)
+  $missingSelections = @()
+
+  if ($script:uiControls -and $script:uiControls.NotificationSoundCombo) {
+    $combo = $script:uiControls.NotificationSoundCombo
+    $combo.BeginUpdate()
+    $combo.Items.Clear()
+    foreach ($key in $sortedKeys) {
+      $null = $combo.Items.Add($key)
+    }
+    $combo.EndUpdate()
+
+    if ($previousSelections.ContainsKey("notification") -and $script:soundLibrary.ContainsKey($previousSelections["notification"])) {
+      $combo.SelectedItem = $previousSelections["notification"]
+    } else {
+      $combo.SelectedIndex = -1
+      if ($previousSelections.ContainsKey("notification") -and $previousSelections["notification"]) {
+        $missingSelections += "notification '" + $previousSelections["notification"] + "'"
+      }
+    }
+  }
+
+  if ($script:uiControls -and $script:uiControls.ClickSoundCombo) {
+    $combo = $script:uiControls.ClickSoundCombo
+    $combo.BeginUpdate()
+    $combo.Items.Clear()
+    foreach ($key in $sortedKeys) {
+      $null = $combo.Items.Add($key)
+    }
+    $combo.EndUpdate()
+
+    if ($previousSelections.ContainsKey("click") -and $script:soundLibrary.ContainsKey($previousSelections["click"])) {
+      $combo.SelectedItem = $previousSelections["click"]
+    } else {
+      $combo.SelectedIndex = -1
+      if ($previousSelections.ContainsKey("click") -and $previousSelections["click"]) {
+        $missingSelections += "click '" + $previousSelections["click"] + "'"
+      }
+    }
+  }
+
+  if ($missingSelections.Count -gt 0) {
+    Update-Nop51SoundStatus ("Missing " + ($missingSelections -join ", ") + ". Update the selections or drop the files again.")
+  } elseif ($script:soundLibrary.Count -gt 0) {
+    Update-Nop51SoundStatus "$($script:soundLibrary.Count) song(s) ready."
+  } else {
+    Update-Nop51SoundStatus "No audio files found. Drop songs into assets\sounds."
+  }
+
+  Update-Nop51SoundButtons
+}
+
+function Open-Nop51SoundFolder {
+  $soundDir = Get-Nop51SoundDirectory
+  if (-not $soundDir) {
+    throw "Sound directory unavailable."
+  }
+  if (-not (Test-Path -LiteralPath $soundDir -PathType Container)) {
+    New-Item -ItemType Directory -Path $soundDir -Force | Out-Null
+  }
+  Start-Process -FilePath "explorer.exe" -ArgumentList $soundDir | Out-Null
+}
+
+function Invoke-Nop51NotificationSound {
+  param(
+    [switch]$StopExisting,
+    [string]$Context = "Notification"
+  )
+
+  if (-not $script:uiControls -or -not $script:uiControls.NotificationSoundCombo) {
+    return
+  }
+
+  $selectedName = $script:uiControls.NotificationSoundCombo.SelectedItem
+  if (-not $selectedName) {
+    return
+  }
+
+  $path = Get-Nop51SoundPathByName -Name $selectedName
+  if (-not $path) {
+    Update-Nop51SoundStatus "$Context sound missing: $selectedName"
+    return
+  }
+
+  try {
+    if ($StopExisting) {
+      Stop-Nop51ActiveSounds
+    }
+    Play-Nop51Sound -Path $path -DisplayName $selectedName | Out-Null
+    if ($Context) {
+      Update-Nop51SoundStatus "$Context sound: $selectedName"
+    } else {
+      Update-Nop51SoundStatus "Notification sound: $selectedName"
+    }
+  } catch {
+    Update-Nop51SoundStatus "Notification playback failed: $($_.Exception.Message)"
+  }
+}
+
+function Invoke-Nop51ClickSound {
+  if (-not $script:uiControls -or -not $script:uiControls.ClickSoundCombo) {
+    return
+  }
+
+  $selectedName = $script:uiControls.ClickSoundCombo.SelectedItem
+  if (-not $selectedName) {
+    return
+  }
+
+  $path = Get-Nop51SoundPathByName -Name $selectedName
+  if (-not $path) {
+    return
+  }
+
+  try {
+    Play-Nop51Sound -Path $path -DisplayName $selectedName | Out-Null
+  } catch {
+    Update-Nop51SoundStatus "Click playback failed: $($_.Exception.Message)"
+  }
+}
+
+function Invoke-Nop51AutoPlayIfRequested {
+  if (-not $script:uiControls -or -not $script:uiControls.AutoPlaySoundCheckbox) {
+    return
+  }
+
+  if ($script:uiControls.AutoPlaySoundCheckbox.Checked) {
+    Invoke-Nop51NotificationSound -StopExisting -Context "Auto-play"
+    if ($script:uiControls.NotificationSoundCombo -and $script:uiControls.NotificationSoundCombo.SelectedItem) {
+      Update-Nop51SoundStatus "Auto-played notification: $($script:uiControls.NotificationSoundCombo.SelectedItem)"
+    }
+  }
+}
+
 function Get-Nop51RunningProcessItems {
   $items = @()
   $processes = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | Sort-Object -Property ProcessName
@@ -305,7 +670,10 @@ function Save-Nop51ConfigFromForm {
     [System.Windows.Forms.RadioButton]$FallbackUrl,
     [System.Windows.Forms.TextBox]$FallbackValueTextBox,
     [System.Windows.Forms.CheckBox]$FallbackAutoClose,
-    [System.Windows.Forms.CheckBox]$FallbackFullscreen
+    [System.Windows.Forms.CheckBox]$FallbackFullscreen,
+    [System.Windows.Forms.ComboBox]$NotificationSoundCombo,
+    [System.Windows.Forms.ComboBox]$ClickSoundCombo,
+    [System.Windows.Forms.CheckBox]$AutoPlaySoundCheckbox
   )
 
   $targetProcess = $TargetTextBox.Text.Trim()
@@ -355,12 +723,29 @@ function Save-Nop51ConfigFromForm {
     }
   }
 
+  $notificationSound = $null
+  if ($NotificationSoundCombo -and $NotificationSoundCombo.SelectedItem) {
+    $notificationSound = [string]$NotificationSoundCombo.SelectedItem
+  }
+
+  $clickSound = $null
+  if ($ClickSoundCombo -and $ClickSoundCombo.SelectedItem) {
+    $clickSound = [string]$ClickSoundCombo.SelectedItem
+  }
+
+  $soundConfig = [pscustomobject]@{
+    notification = if ($notificationSound) { $notificationSound } else { $null }
+    click = if ($clickSound) { $clickSound } else { $null }
+    autoPlayOnStart = if ($AutoPlaySoundCheckbox) { $AutoPlaySoundCheckbox.Checked } else { $false }
+  }
+
   $configObject = [pscustomobject]@{
     targetProcessName = $targetProcess
     hideStrategy = $hideStrategy
     hideHotkey = $hideHotKey
     restoreHotkey = $restoreHotKey
     fallback = $fallback
+    sounds = $soundConfig
   }
 
   Assert-Nop51Config -Config $configObject
@@ -380,7 +765,7 @@ function Invoke-Nop51SaveConfigFromUi {
     return $null
   }
 
-  $config = Save-Nop51ConfigFromForm -TargetTextBox $script:uiControls.TargetText -HideHotKeyTextBox $script:uiControls.HideHotkeyText -RestoreHotKeyTextBox $script:uiControls.RestoreHotkeyText -UsePidCheckbox $script:uiControls.UsePidCheckbox -HideStrategyCombo $script:uiControls.HideStrategyCombo -FallbackNone $script:uiControls.FallbackNone -FallbackApp $script:uiControls.FallbackApp -FallbackUrl $script:uiControls.FallbackUrl -FallbackValueTextBox $script:uiControls.FallbackValueText -FallbackAutoClose $script:uiControls.FallbackAutoClose -FallbackFullscreen $script:uiControls.FallbackFullscreen
+  $config = Save-Nop51ConfigFromForm -TargetTextBox $script:uiControls.TargetText -HideHotKeyTextBox $script:uiControls.HideHotkeyText -RestoreHotKeyTextBox $script:uiControls.RestoreHotkeyText -UsePidCheckbox $script:uiControls.UsePidCheckbox -HideStrategyCombo $script:uiControls.HideStrategyCombo -FallbackNone $script:uiControls.FallbackNone -FallbackApp $script:uiControls.FallbackApp -FallbackUrl $script:uiControls.FallbackUrl -FallbackValueTextBox $script:uiControls.FallbackValueText -FallbackAutoClose $script:uiControls.FallbackAutoClose -FallbackFullscreen $script:uiControls.FallbackFullscreen -NotificationSoundCombo $script:uiControls.NotificationSoundCombo -ClickSoundCombo $script:uiControls.ClickSoundCombo -AutoPlaySoundCheckbox $script:uiControls.AutoPlaySoundCheckbox
 
   if (-not $Silent) {
     Update-Nop51ConfigStatus "Configuration saved"
@@ -661,6 +1046,8 @@ function Stop-Nop51BackgroundService {
     Status = "Stopped"
     Error = $script:serviceState.Error
   }
+
+  Stop-Nop51ActiveSounds
 }
 
 function Update-Nop51ServiceUi {
@@ -796,6 +1183,7 @@ function Stop-Nop51Application {
     $script:uiControls.TrayIcon.Dispose()
   }
 
+  Stop-Nop51ActiveSounds
   Stop-Nop51LauncherProcess
   [System.Windows.Forms.Application]::Exit()
 }
@@ -808,7 +1196,9 @@ $form.Text = "NO-P51 Control Panel"
 $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
 $form.MaximizeBox = $false
 $form.StartPosition = "CenterScreen"
-$form.ClientSize = New-Object System.Drawing.Size 860, 620
+$form.AutoScaleDimensions = New-Object System.Drawing.SizeF 96, 96
+$form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
+$form.ClientSize = New-Object System.Drawing.Size 860, 720
 $form.BackColor = [System.Drawing.Color]::FromArgb(245, 247, 250)
 $form.Icon = Get-Nop51AppIcon
 
@@ -1043,10 +1433,128 @@ $fallbackFullscreen.AutoSize = $true
 $fallbackGroup.Controls.Add($fallbackFullscreen)
 $toolTip.SetToolTip($fallbackFullscreen, "Send F11 when the fallback window appears to cover the screen quickly.")
 
+$soundGroup = New-Object System.Windows.Forms.GroupBox
+$soundGroup.Text = "Sound cues"
+$soundGroup.Font = [System.Drawing.Font]::new("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Bold)
+$soundGroup.Location = New-Object System.Drawing.Point 10, 540
+$soundGroup.Size = New-Object System.Drawing.Size 840, 150
+$soundGroup.BackColor = [System.Drawing.Color]::White
+$soundGroup.ForeColor = [System.Drawing.Color]::FromArgb(30, 41, 59)
+$form.Controls.Add($soundGroup)
+
+$notificationSoundLabel = New-Object System.Windows.Forms.Label
+$notificationSoundLabel.Text = "Notification sound"
+$notificationSoundLabel.Location = New-Object System.Drawing.Point 15, 30
+$notificationSoundLabel.AutoSize = $true
+$soundGroup.Controls.Add($notificationSoundLabel)
+
+$notificationSoundCombo = New-Object System.Windows.Forms.ComboBox
+$notificationSoundCombo.Location = New-Object System.Drawing.Point 15, 55
+$notificationSoundCombo.Size = New-Object System.Drawing.Size 240, 26
+$notificationSoundCombo.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+$soundGroup.Controls.Add($notificationSoundCombo)
+
+$notificationPreviewButton = New-Object System.Windows.Forms.Button
+$notificationPreviewButton.Text = "Play"
+$notificationPreviewButton.Location = New-Object System.Drawing.Point 265, 53
+$notificationPreviewButton.Size = New-Object System.Drawing.Size 70, 30
+$notificationPreviewButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$notificationPreviewButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(59, 130, 246)
+$notificationPreviewButton.BackColor = [System.Drawing.Color]::FromArgb(59, 130, 246)
+$notificationPreviewButton.ForeColor = [System.Drawing.Color]::White
+$notificationPreviewButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+$notificationPreviewButton.UseVisualStyleBackColor = $false
+$notificationPreviewButton.Enabled = $false
+$soundGroup.Controls.Add($notificationPreviewButton)
+
+$clickSoundLabel = New-Object System.Windows.Forms.Label
+$clickSoundLabel.Text = "Click sound"
+$clickSoundLabel.Location = New-Object System.Drawing.Point 15, 95
+$clickSoundLabel.AutoSize = $true
+$soundGroup.Controls.Add($clickSoundLabel)
+
+$clickSoundCombo = New-Object System.Windows.Forms.ComboBox
+$clickSoundCombo.Location = New-Object System.Drawing.Point 15, 120
+$clickSoundCombo.Size = New-Object System.Drawing.Size 240, 26
+$clickSoundCombo.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+$soundGroup.Controls.Add($clickSoundCombo)
+
+$clickPreviewButton = New-Object System.Windows.Forms.Button
+$clickPreviewButton.Text = "Play"
+$clickPreviewButton.Location = New-Object System.Drawing.Point 265, 118
+$clickPreviewButton.Size = New-Object System.Drawing.Size 70, 30
+$clickPreviewButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$clickPreviewButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(59, 130, 246)
+$clickPreviewButton.BackColor = [System.Drawing.Color]::FromArgb(59, 130, 246)
+$clickPreviewButton.ForeColor = [System.Drawing.Color]::White
+$clickPreviewButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+$clickPreviewButton.UseVisualStyleBackColor = $false
+$clickPreviewButton.Enabled = $false
+$soundGroup.Controls.Add($clickPreviewButton)
+
+$stopSoundButton = New-Object System.Windows.Forms.Button
+$stopSoundButton.Text = "Stop"
+$stopSoundButton.Location = New-Object System.Drawing.Point 360, 53
+$stopSoundButton.Size = New-Object System.Drawing.Size 80, 30
+$stopSoundButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$stopSoundButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(220, 38, 38)
+$stopSoundButton.BackColor = [System.Drawing.Color]::FromArgb(254, 226, 226)
+$stopSoundButton.ForeColor = [System.Drawing.Color]::FromArgb(185, 28, 28)
+$stopSoundButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+$stopSoundButton.UseVisualStyleBackColor = $false
+$stopSoundButton.Enabled = $false
+$soundGroup.Controls.Add($stopSoundButton)
+
+$refreshSoundsButton = New-Object System.Windows.Forms.Button
+$refreshSoundsButton.Text = "Refresh"
+$refreshSoundsButton.Location = New-Object System.Drawing.Point 450, 53
+$refreshSoundsButton.Size = New-Object System.Drawing.Size 90, 30
+$refreshSoundsButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$refreshSoundsButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(203, 213, 225)
+$refreshSoundsButton.BackColor = [System.Drawing.Color]::FromArgb(241, 245, 249)
+$refreshSoundsButton.ForeColor = [System.Drawing.Color]::FromArgb(51, 65, 85)
+$refreshSoundsButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+$refreshSoundsButton.UseVisualStyleBackColor = $false
+$soundGroup.Controls.Add($refreshSoundsButton)
+
+$openSoundFolderButton = New-Object System.Windows.Forms.Button
+$openSoundFolderButton.Text = "Open folder"
+$openSoundFolderButton.Location = New-Object System.Drawing.Point 550, 53
+$openSoundFolderButton.Size = New-Object System.Drawing.Size 110, 30
+$openSoundFolderButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$openSoundFolderButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(203, 213, 225)
+$openSoundFolderButton.BackColor = [System.Drawing.Color]::FromArgb(241, 245, 249)
+$openSoundFolderButton.ForeColor = [System.Drawing.Color]::FromArgb(51, 65, 85)
+$openSoundFolderButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+$openSoundFolderButton.UseVisualStyleBackColor = $false
+$soundGroup.Controls.Add($openSoundFolderButton)
+
+$autoPlaySoundCheckbox = New-Object System.Windows.Forms.CheckBox
+$autoPlaySoundCheckbox.Text = "Auto-play notification when service starts"
+$autoPlaySoundCheckbox.Location = New-Object System.Drawing.Point 360, 108
+$autoPlaySoundCheckbox.AutoSize = $true
+$soundGroup.Controls.Add($autoPlaySoundCheckbox)
+
+$soundStatusLabel = New-Object System.Windows.Forms.Label
+$soundStatusLabel.Text = "Drop audio files into assets\sounds"
+$soundStatusLabel.Location = New-Object System.Drawing.Point 360, 130
+$soundStatusLabel.AutoSize = $true
+$soundStatusLabel.ForeColor = [System.Drawing.Color]::FromArgb(107, 114, 128)
+$soundGroup.Controls.Add($soundStatusLabel)
+
+$toolTip.SetToolTip($notificationSoundCombo, "Choose the sound used for notifications and automatic playback.")
+$toolTip.SetToolTip($notificationPreviewButton, "Preview the notification sound.")
+$toolTip.SetToolTip($clickSoundCombo, "Choose the sound that plays on key button clicks.")
+$toolTip.SetToolTip($clickPreviewButton, "Preview the click sound.")
+$toolTip.SetToolTip($stopSoundButton, "Stop any songs that are currently playing.")
+$toolTip.SetToolTip($refreshSoundsButton, "Reload the songs from assets\sounds.")
+$toolTip.SetToolTip($openSoundFolderButton, "Open the songs directory in File Explorer.")
+$toolTip.SetToolTip($autoPlaySoundCheckbox, "Automatically play the notification sound whenever the service starts or restarts.")
+
 $saveButton = New-Object System.Windows.Forms.Button
 $saveButton.Text = "Save configuration"
 $saveButton.Font = [System.Drawing.Font]::new("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-$saveButton.Location = New-Object System.Drawing.Point 10, 520
+$saveButton.Location = New-Object System.Drawing.Point 10, 660
 $saveButton.Size = New-Object System.Drawing.Size 160, 35
 $saveButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $saveButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(34, 197, 94)
@@ -1058,7 +1566,7 @@ $form.Controls.Add($saveButton)
 $startButton = New-Object System.Windows.Forms.Button
 $startButton.Text = "▶ Start service"
 $startButton.Font = [System.Drawing.Font]::new("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-$startButton.Location = New-Object System.Drawing.Point 190, 520
+$startButton.Location = New-Object System.Drawing.Point 190, 660
 $startButton.Size = New-Object System.Drawing.Size 140, 35
 $startButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $startButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(59, 130, 246)
@@ -1070,7 +1578,7 @@ $form.Controls.Add($startButton)
 $killTargetButton = New-Object System.Windows.Forms.Button
 $killTargetButton.Text = "Kill target"
 $killTargetButton.Font = [System.Drawing.Font]::new("Segoe UI", 9)
-$killTargetButton.Location = New-Object System.Drawing.Point 360, 520
+$killTargetButton.Location = New-Object System.Drawing.Point 360, 660
 $killTargetButton.Size = New-Object System.Drawing.Size 120, 35
 $killTargetButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $killTargetButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(239, 68, 68)
@@ -1082,7 +1590,7 @@ $form.Controls.Add($killTargetButton)
 $exitAppButton = New-Object System.Windows.Forms.Button
 $exitAppButton.Text = "Exit"
 $exitAppButton.Font = [System.Drawing.Font]::new("Segoe UI", 9)
-$exitAppButton.Location = New-Object System.Drawing.Point 700, 520
+$exitAppButton.Location = New-Object System.Drawing.Point 700, 660
 $exitAppButton.Size = New-Object System.Drawing.Size 100, 35
 $exitAppButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $exitAppButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(156, 163, 175)
@@ -1097,7 +1605,7 @@ $statusLabel = New-Object System.Windows.Forms.Label
 $statusLabel.Text = "Service stopped"
 $statusLabel.Font = [System.Drawing.Font]::new("Segoe UI Semibold", 9, [System.Drawing.FontStyle]::Bold)
 $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 116, 139)
-$statusLabel.Location = New-Object System.Drawing.Point 10, 490
+$statusLabel.Location = New-Object System.Drawing.Point 10, 620
 $statusLabel.AutoSize = $true
 $form.Controls.Add($statusLabel)
 
@@ -1105,7 +1613,7 @@ $configStatusLabel = New-Object System.Windows.Forms.Label
 $configStatusLabel.Text = ""
 $configStatusLabel.Font = [System.Drawing.Font]::new("Segoe UI", 8)
 $configStatusLabel.ForeColor = [System.Drawing.Color]::FromArgb(107, 114, 128)
-$configStatusLabel.Location = New-Object System.Drawing.Point 10, 560
+$configStatusLabel.Location = New-Object System.Drawing.Point 10, 702
 $configStatusLabel.AutoSize = $true
 $form.Controls.Add($configStatusLabel)
 
@@ -1151,6 +1659,15 @@ $script:uiControls = [pscustomobject]@{
   FallbackValueLabel = $fallbackValueLabel
   FallbackAutoClose = $fallbackAutoClose
   FallbackFullscreen = $fallbackFullscreen
+  NotificationSoundCombo = $notificationSoundCombo
+  NotificationPreviewButton = $notificationPreviewButton
+  ClickSoundCombo = $clickSoundCombo
+  ClickPreviewButton = $clickPreviewButton
+  StopSoundButton = $stopSoundButton
+  RefreshSoundButton = $refreshSoundsButton
+  OpenSoundFolderButton = $openSoundFolderButton
+  AutoPlaySoundCheckbox = $autoPlaySoundCheckbox
+  SoundStatusLabel = $soundStatusLabel
   StartButton = $startButton
   KillTargetButton = $killTargetButton
   ExitAppButton = $exitAppButton
@@ -1231,6 +1748,16 @@ function Populate-FormFromConfig {
       if ($script:uiControls.HideStrategyCombo -and $script:uiControls.HideStrategyCombo.Items.Count -gt 0) {
         $script:uiControls.HideStrategyCombo.SelectedIndex = 0
       }
+      if ($script:uiControls.NotificationSoundCombo) {
+        $script:uiControls.NotificationSoundCombo.SelectedIndex = -1
+      }
+      if ($script:uiControls.ClickSoundCombo) {
+        $script:uiControls.ClickSoundCombo.SelectedIndex = -1
+      }
+      if ($script:uiControls.AutoPlaySoundCheckbox) {
+        $script:uiControls.AutoPlaySoundCheckbox.Checked = $false
+      }
+      Update-Nop51SoundButtons
       Update-FallbackControls
       return
     }
@@ -1292,8 +1819,52 @@ function Populate-FormFromConfig {
         $script:uiControls.HideStrategyCombo.SelectedIndex = 0
       }
     }
+
+    $soundConfig = $null
+    if ($Config.PSObject.Properties.Name -contains "sounds") {
+      $soundConfig = $Config.sounds
+    }
+
+    $missingSoundNotes = @()
+
+    if ($script:uiControls.NotificationSoundCombo) {
+      $script:uiControls.NotificationSoundCombo.SelectedIndex = -1
+      if ($soundConfig -and $soundConfig.PSObject.Properties.Name -contains "notification" -and $soundConfig.notification) {
+        $notificationChoice = [string]$soundConfig.notification
+        if ($script:uiControls.NotificationSoundCombo.Items.Contains($notificationChoice)) {
+          $script:uiControls.NotificationSoundCombo.SelectedItem = $notificationChoice
+        } else {
+          $missingSoundNotes += "notification '$notificationChoice'"
+        }
+      }
+    }
+
+    if ($script:uiControls.ClickSoundCombo) {
+      $script:uiControls.ClickSoundCombo.SelectedIndex = -1
+      if ($soundConfig -and $soundConfig.PSObject.Properties.Name -contains "click" -and $soundConfig.click) {
+        $clickChoice = [string]$soundConfig.click
+        if ($script:uiControls.ClickSoundCombo.Items.Contains($clickChoice)) {
+          $script:uiControls.ClickSoundCombo.SelectedItem = $clickChoice
+        } else {
+          $missingSoundNotes += "click '$clickChoice'"
+        }
+      }
+    }
+
+    if ($script:uiControls.AutoPlaySoundCheckbox) {
+      $autoPlayValue = $false
+      if ($soundConfig -and $soundConfig.PSObject.Properties.Name -contains "autoPlayOnStart") {
+        $autoPlayValue = [bool]$soundConfig.autoPlayOnStart
+      }
+      $script:uiControls.AutoPlaySoundCheckbox.Checked = $autoPlayValue
+    }
+
+    if ($missingSoundNotes.Count -gt 0) {
+      Update-Nop51SoundStatus ("Missing " + ($missingSoundNotes -join ", ") + ". Refresh the songs or update the selections.")
+    }
   }
   finally {
+    Update-Nop51SoundButtons
     Update-FallbackControls
     Update-HideStrategyWarning
     $script:isLoadingConfig = $false
@@ -1391,6 +1962,7 @@ $targetText.add_Leave({
 })
 
 $quickHideButton.add_Click({
+  Invoke-Nop51ClickSound
   Hide-Nop51ControlPanel -Form $form
 })
 
@@ -1456,7 +2028,10 @@ $refreshProcessesButton.add_MouseLeave({
   $refreshProcessesButton.BackColor = [System.Drawing.Color]::FromArgb(241, 245, 249)
 })
 
-$refreshProcessesButton.add_Click({ Refresh-ProcessList -PreserveSelection })
+$refreshProcessesButton.add_Click({
+  Invoke-Nop51ClickSound
+  Refresh-ProcessList -PreserveSelection
+})
 
 $script:uiControls.FallbackNone.add_CheckedChanged({
   Update-FallbackControls
@@ -1502,10 +2077,56 @@ $fallbackFullscreen.add_CheckedChanged({
   Set-Nop51ConfigDirty -SyncNow
 })
 
+$notificationSoundCombo.add_SelectedIndexChanged({
+  Update-Nop51SoundButtons
+  if ($script:isLoadingConfig) { return }
+  Set-Nop51ConfigDirty -SyncNow
+})
+
+$clickSoundCombo.add_SelectedIndexChanged({
+  Update-Nop51SoundButtons
+  if ($script:isLoadingConfig) { return }
+  Set-Nop51ConfigDirty -SyncNow
+})
+
+$notificationPreviewButton.add_Click({
+  Invoke-Nop51PreviewSound -Combo $script:uiControls.NotificationSoundCombo -Context "notification"
+})
+
+$clickPreviewButton.add_Click({
+  Invoke-Nop51PreviewSound -Combo $script:uiControls.ClickSoundCombo -Context "click"
+})
+
+$stopSoundButton.add_Click({
+  Stop-Nop51ActiveSounds
+})
+
+$refreshSoundsButton.add_Click({
+  Load-Nop51SoundLibrary
+  Invoke-Nop51ClickSound
+})
+
+$openSoundFolderButton.add_Click({
+  Invoke-Nop51ClickSound
+  try {
+    Open-Nop51SoundFolder
+  } catch {
+    Show-Nop51Error $_.Exception.Message
+  }
+})
+
+$autoPlaySoundCheckbox.add_CheckedChanged({
+  if ($script:isLoadingConfig) {
+    return
+  }
+  Set-Nop51ConfigDirty -SyncNow
+})
+
 $hideHotkeyText.add_KeyDown({ Handle-HotkeyKeyDown -TextBox $script:uiControls.HideHotkeyText -EventArgs $_ })
 $restoreHotkeyText.add_KeyDown({ Handle-HotkeyKeyDown -TextBox $script:uiControls.RestoreHotkeyText -EventArgs $_ })
 
 $saveButton.add_Click({
+  Invoke-Nop51ClickSound
   try {
     Invoke-Nop51SaveConfigFromUi -Silent | Out-Null
     Show-Nop51Info "Configuration saved."
@@ -1517,6 +2138,7 @@ $saveButton.add_Click({
 })
 
 $startButton.add_Click({
+  Invoke-Nop51ClickSound
   try {
     if ($script:serviceState.Status -eq "Running") {
       Stop-Nop51BackgroundService -SuppressAutoRestart
@@ -1533,12 +2155,14 @@ $startButton.add_Click({
     Update-Nop51ConfigStatus "Configuration saved"
     Start-Nop51BackgroundService -Path $ConfigPath
     Update-Nop51ServiceUi -StartButton $script:uiControls.StartButton -StatusLabel $script:uiControls.StatusLabel
+    Invoke-Nop51AutoPlayIfRequested
   } catch {
     Show-Nop51Error $_.Exception.Message
   }
 })
 
 $killTargetButton.add_Click({
+  Invoke-Nop51ClickSound
   try {
     $usePid = $script:uiControls.UsePidCheckbox.Checked
     $targetValue = $script:uiControls.TargetText.Text.Trim()
@@ -1556,6 +2180,7 @@ $killTargetButton.add_Click({
 })
 
 $exitAppButton.add_Click({
+  Invoke-Nop51ClickSound
   Stop-Nop51Application -Form $form
 })
 
@@ -1567,6 +2192,7 @@ $serviceMonitor.add_Tick({
         try {
           Start-Nop51BackgroundService -Path $ConfigPath
           Update-Nop51ServiceUi -StartButton $script:uiControls.StartButton -StatusLabel $script:uiControls.StatusLabel
+          Invoke-Nop51AutoPlayIfRequested
           $script:pendingServiceRestart = $false
           $script:uiControls.TrayIcon.ShowBalloonTip(1500, "NO-P51", "Service restarted after an interruption.", [System.Windows.Forms.ToolTipIcon]::Info)
         } catch {
@@ -1606,12 +2232,14 @@ $serviceMonitor.add_Tick({
       Error = $script:serviceState.Error
     }
     Update-Nop51ServiceUi -StartButton $script:uiControls.StartButton -StatusLabel $script:uiControls.StatusLabel
+    Stop-Nop51ActiveSounds
     if ($script:serviceState.Error) {
       if (-not $script:userStopRequested) {
         $script:pendingServiceRestart = $true
         $script:serviceRestartCountdown = 3
         $script:uiControls.TrayIcon.Visible = $true
-  $script:uiControls.TrayIcon.ShowBalloonTip(2000, "NO-P51", "Service stopped: $($script:serviceState.Error)`nAutomatic restart in 3 s.", [System.Windows.Forms.ToolTipIcon]::Warning)
+        Invoke-Nop51NotificationSound -StopExisting -Context "Service warning"
+        $script:uiControls.TrayIcon.ShowBalloonTip(2000, "NO-P51", "Service stopped: $($script:serviceState.Error)`nAutomatic restart in 3 s.", [System.Windows.Forms.ToolTipIcon]::Warning)
       } else {
         Show-Nop51Error "Service stopped: $($script:serviceState.Error)"
       }
@@ -1620,7 +2248,8 @@ $serviceMonitor.add_Tick({
       $script:pendingServiceRestart = $true
       $script:serviceRestartCountdown = 3
       $script:uiControls.TrayIcon.Visible = $true
-  $script:uiControls.TrayIcon.ShowBalloonTip(1500, "NO-P51", "Service interrupted. Automatic restart in 3 s.", [System.Windows.Forms.ToolTipIcon]::Warning)
+      Invoke-Nop51NotificationSound -StopExisting -Context "Service warning"
+      $script:uiControls.TrayIcon.ShowBalloonTip(1500, "NO-P51", "Service interrupted. Automatic restart in 3 s.", [System.Windows.Forms.ToolTipIcon]::Warning)
     }
   }
 })
@@ -1632,6 +2261,7 @@ $menuOpen.add_Click({
 })
 
 $menuExit.add_Click({
+  Invoke-Nop51ClickSound
   Stop-Nop51Application -Form $form
 })
 
@@ -1655,7 +2285,7 @@ $form.add_FormClosing({
   } else {
     Try-Nop51AutoSave
     if ($script:serviceState.Status -eq "Running") {
-  Stop-Nop51BackgroundService -SuppressAutoRestart
+      Stop-Nop51BackgroundService -SuppressAutoRestart
     }
     $script:uiControls.TrayIcon.Visible = $false
   }
@@ -1663,6 +2293,7 @@ $form.add_FormClosing({
 
 $form.add_Shown({
   Refresh-ProcessList -PreserveSelection
+  Load-Nop51SoundLibrary
   $config = Read-Nop51ConfigOrDefault
   Populate-FormFromConfig -Config $config
   Apply-Nop51IconToUi

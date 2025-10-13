@@ -17,6 +17,7 @@ NO-P51 est un utilitaire Windows portable qui permet de masquer rapidement une a
 - Redémarrage automatique du service en arrière-plan en cas de plantage, avec notifications discrètes.
 - Action secondaire optionnelle au moment du masquage : ouverture d'une URL ou lancement d'un autre logiciel, avec fermeture automatique lors de la restauration.
 - Déclenchement du fallback avant le masquage pour limiter le temps “écran vide”, avec option plein écran (F11) automatique.
+- Bibliothèque audio intégrée : sélectionnez un son de notification et un son de clic distincts, prévisualisez-les et optez pour une lecture automatique lors du démarrage du service.
 - Fonctionne avec les droits standards (pas besoin d'élévation UAC).
 
 ## Contenu du projet
@@ -44,7 +45,12 @@ Modifiez `config.json` pour adapter le comportement :
   "hideStrategy": "hide",
   "hideHotkey": "=",
   "restoreHotkey": "Ctrl+Alt+R",
-  "fallback": null
+  "fallback": null,
+  "sounds": {
+    "notification": null,
+    "click": null,
+    "autoPlayOnStart": false
+  }
 }
 ```
 
@@ -56,6 +62,10 @@ Modifiez `config.json` pour adapter le comportement :
   - `value` : chemin de l'application ou URL à ouvrir.
   - `autoClose` : `true` pour fermer automatiquement l'application fallback au moment de la restauration.
   - `fullscreen` : `true` pour envoyer `F11` à la fenêtre fallback dès son apparition (pratique pour un navigateur en plein écran).
+- `sounds` (facultatif) :
+  - `notification` : nom du fichier audio (sans extension) à jouer lors des notifications et redémarrages automatiques de service.
+  - `click` : nom du fichier audio associé aux principaux clics (sauvegarde, démarrage/arrêt, etc.).
+  - `autoPlayOnStart` : `true` pour lire automatiquement le son de notification lorsque le service démarre ou redémarre.
 
 Si vous ne voulez pas d'action secondaire, supprimez l'objet `fallback` ou mettez-le à `null`.
 
@@ -71,6 +81,7 @@ Si vous ne voulez pas d'action secondaire, supprimez l'objet `fallback` ou mette
 4. Choisissez la stratégie dans la liste **Hide strategy** : *Hide window* (par défaut) conserve le processus en arrière-plan, tandis que *Terminate process* tente de l'arrêter immédiatement. Selon vos autorisations Windows, l'arrêt peut échouer ; aucune relance automatique n'est effectuée par la touche de restauration.
 5. Choisissez l'action fallback éventuelle (aucune, lancement d'une application, ouverture d'une URL) : vous pouvez activer **Close fallback app on restore** et/ou **Toggle fullscreen (F11) after launch** pour contrôler le comportement automatique. La bascule plein écran déclenche F11 dès que la nouvelle fenêtre apparaît. Les champs jaunes sont synchronisés automatiquement avec `config.json` dès qu'ils sont valides.
 6. Cliquez sur **Start service** pour activer le service. La fenêtre peut être fermée : l'application reste active dans la zone de notification (icône flèche), qui reste visible à tout moment. Le menu contextuel du tray propose **Open interface** et **Exit NO-P51**. Les boutons **Kill target now** et **Exit NO-P51** restent disponibles pour les actions rapides.
+7. Dans le groupe **Sound cues**, déposez vos fichiers audio (`.wav`, `.mp3`, `.ogg`, etc.) dans `assets\sounds`, choisissez un son de notification et un son de clic, prévisualisez-les et cochez *Auto-play notification when service starts* si vous souhaitez un rappel sonore à chaque (ré)activation du service.
 
 ### Ligne de commande (optionnel)
 

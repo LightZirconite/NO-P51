@@ -12,7 +12,7 @@ $script:repoRoot = Split-Path -Parent $PSScriptRoot
 $script:guiScriptPath = Join-Path $PSScriptRoot "no-p51-gui.ps1"
 $script:cacheFile = Join-Path $script:repoRoot ".update-cache"
 $script:logFile = Join-Path $script:repoRoot "bootstrap.log"
-$script:updateCheckInterval = 3600 # 1 hour in seconds
+$script:updateCheckInterval = 900 # 15 minutes in seconds
 
 function Write-BootstrapLog {
   param([string]$Message, [string]$Type = "Info")
