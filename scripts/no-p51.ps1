@@ -8,6 +8,43 @@ Add-Type -AssemblyName System.Windows.Forms
 
 $script:ConvertFromJsonSupportsDepth = $null
 $script:ConvertToJsonSupportsDepth = $null
+$script:soundPlayer = $null
+$script:songsPath = Join-Path -Path (Split-Path -Parent $PSScriptRoot) -ChildPath "songs"
+
+function Play-Nop51Sound {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet("click", "notif", "error")]
+    [string]$SoundType
+  )
+
+  if (-not $script:soundPlayer) {
+    $script:soundPlayer = New-Object System.Media.SoundPlayer
+  }
+
+  $soundFile = switch ($SoundType) {
+    "click" { "click.mp3" }
+    "notif" { "notif.mp3" }
+    "error" { "notif.mp3" }
+    default { $null }
+  }
+
+  if (-not $soundFile) {
+    return
+  }
+
+  $soundPath = Join-Path -Path $script:songsPath -ChildPath $soundFile
+  if (-not (Test-Path -LiteralPath $soundPath)) {
+    return
+  }
+
+  try {
+    $script:soundPlayer.SoundLocation = $soundPath
+    $script:soundPlayer.Play()
+  } catch {
+    # Silently ignore audio playback errors
+  }
+}
 
 function Convert-Nop51FromJson {
   param(
@@ -787,15 +824,19 @@ function Invoke-Nop51Hide {
         Write-Nop51Log "Terminating '$($resolved.Process.ProcessName)' (PID $($resolved.Process.Id))."
         Stop-Process -Id $resolved.Process.Id -Force -ErrorAction Stop
         $State.LastHandle = [IntPtr]::Zero
+        Play-Nop51Sound -SoundType "click"
       } catch {
         Write-Nop51Log "Failed to terminate process '$($resolved.Process.ProcessName)': $($_.Exception.Message)" "WARN"
+        Play-Nop51Sound -SoundType "error"
       }
     }
     default {
       if (Hide-Nop51Target -Handle $resolved.Handle) {
         Write-Nop51Log "Hidden '$($resolved.Process.ProcessName)' (PID $($resolved.Process.Id))."
+        Play-Nop51Sound -SoundType "click"
       } else {
         Write-Nop51Log "Failed to hide window for '$($resolved.Process.ProcessName)'." "WARN"
+        Play-Nop51Sound -SoundType "error"
       }
     }
   }
@@ -831,8 +872,10 @@ function Invoke-Nop51Restore {
 
   if (Restore-Nop51Target -Handle $handle) {
     Write-Nop51Log "Restored target window."
+    Play-Nop51Sound -SoundType "notif"
   } else {
     Write-Nop51Log "Failed to restore target window." "WARN"
+    Play-Nop51Sound -SoundType "error"
   }
 
   if ($State.Fallback -and $State.Fallback.autoClose -and $State.FallbackProcess) {

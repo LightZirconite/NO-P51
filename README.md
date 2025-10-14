@@ -25,7 +25,9 @@ NO-P51 est un utilitaire Windows portable qui permet de masquer rapidement une a
 - `scripts/no-p51-gui.ps1` : interface graphique pour configurer et piloter NO-P51.
 - `NO-P51.bat` : unique lanceur (ouvre l'interface graphique et gère le service).
 - `config.json` : configuration utilisateur (processus, raccourcis, action fallback).
+- `songs/` : fichiers audio pour le feedback sonore (click.mp3, notif.mp3).
 - `tests/no-p51.Tests.ps1` : tests unitaires Pester pour les fonctions critiques.
+- `CHANGELOG.md` : historique détaillé des versions et améliorations.
 
 ## Prérequis
 

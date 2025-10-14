@@ -56,6 +56,64 @@ $script:userStopRequested = $false
 $script:repoRoot = Split-Path -Parent $PSScriptRoot
 $script:autoSaveTimer = $null
 $script:uiControls = $null
+$script:logMessages = New-Object System.Collections.Generic.List[string]
+$script:soundPlayer = $null
+$script:songsPath = Join-Path -Path $script:repoRoot -ChildPath "songs"
+
+function Play-Nop51GuiSound {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet("click", "notif", "error")]
+    [string]$SoundType
+  )
+
+  if (-not $script:soundPlayer) {
+    $script:soundPlayer = New-Object System.Media.SoundPlayer
+  }
+
+  $soundFile = switch ($SoundType) {
+    "click" { "click.mp3" }
+    "notif" { "notif.mp3" }
+    "error" { "notif.mp3" }
+    default { $null }
+  }
+
+  if (-not $soundFile) {
+    return
+  }
+
+  $soundPath = Join-Path -Path $script:songsPath -ChildPath $soundFile
+  if (-not (Test-Path -LiteralPath $soundPath)) {
+    return
+  }
+
+  try {
+    $script:soundPlayer.SoundLocation = $soundPath
+    $script:soundPlayer.Play()
+  } catch {
+    # Silently ignore audio errors
+  }
+}
+
+function Add-Nop51LogMessage {
+  param(
+    [string]$Message,
+    [string]$Level = "INFO"
+  )
+
+  $timestamp = (Get-Date).ToString("HH:mm:ss")
+  $logEntry = "[$timestamp] [$Level] $Message"
+  
+  if ($script:logMessages.Count -ge 100) {
+    $script:logMessages.RemoveAt(0)
+  }
+  
+  $script:logMessages.Add($logEntry)
+  
+  if ($script:uiControls -and $script:uiControls.LogTextBox) {
+    $script:uiControls.LogTextBox.AppendText("$logEntry`r`n")
+  }
+}
 
 function New-Nop51DefaultConfig {
   return [pscustomobject]@{
@@ -690,10 +748,12 @@ function Hide-Nop51ControlPanel {
 
   Try-Nop51AutoSave
   $Form.Hide()
+  Play-Nop51GuiSound -SoundType "click"
+  Add-Nop51LogMessage "Control panel hidden to system tray" "INFO"
   if ($script:uiControls -and $script:uiControls.TrayIcon) {
     $script:uiControls.TrayIcon.Visible = $true
     if (-not $script:trayBalloonShown) {
-  $script:uiControls.TrayIcon.ShowBalloonTip(1500, "NO-P51", "The control panel stays active in the taskbar.", [System.Windows.Forms.ToolTipIcon]::Info)
+  $script:uiControls.TrayIcon.ShowBalloonTip(1500, "NO-P51", "Control panel stays active in the notification area.", [System.Windows.Forms.ToolTipIcon]::Info)
       $script:trayBalloonShown = $true
     }
   }
@@ -721,6 +781,8 @@ function Invoke-Nop51KillTarget {
       throw "Unable to find a process with PID $pid. The process may have already stopped."
     }
     $process | Stop-Process -Force -ErrorAction Stop
+    Add-Nop51LogMessage "Killed process with PID $pid" "INFO"
+    Play-Nop51GuiSound -SoundType "notif"
     return 1
   }
 
@@ -743,6 +805,8 @@ function Invoke-Nop51KillTarget {
     $proc | Stop-Process -Force -ErrorAction Stop
     $count++
   }
+  Add-Nop51LogMessage "Killed $count instance(s) of process '$nameToken'" "INFO"
+  Play-Nop51GuiSound -SoundType "notif"
   return $count
 }
 
@@ -810,7 +874,7 @@ $form.MaximizeBox = $false
 $form.StartPosition = "CenterScreen"
 $form.AutoScaleDimensions = New-Object System.Drawing.SizeF 96, 96
 $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
-$form.ClientSize = New-Object System.Drawing.Size 860, 620
+$form.ClientSize = New-Object System.Drawing.Size 860, 720
 $form.BackColor = [System.Drawing.Color]::FromArgb(245, 247, 250)
 $form.Icon = Get-Nop51AppIcon
 
@@ -1045,10 +1109,31 @@ $fallbackFullscreen.AutoSize = $true
 $fallbackGroup.Controls.Add($fallbackFullscreen)
 $toolTip.SetToolTip($fallbackFullscreen, "Send F11 when the fallback window appears to cover the screen quickly.")
 
+$logGroup = New-Object System.Windows.Forms.GroupBox
+$logGroup.Text = "Activity Log"
+$logGroup.Font = [System.Drawing.Font]::new("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Bold)
+$logGroup.Location = New-Object System.Drawing.Point 440, 200
+$logGroup.Size = New-Object System.Drawing.Size 410, 185
+$logGroup.BackColor = [System.Drawing.Color]::White
+$logGroup.ForeColor = [System.Drawing.Color]::FromArgb(30, 41, 59)
+$form.Controls.Add($logGroup)
+
+$logTextBox = New-Object System.Windows.Forms.TextBox
+$logTextBox.Location = New-Object System.Drawing.Point 10, 25
+$logTextBox.Size = New-Object System.Drawing.Size 390, 150
+$logTextBox.Multiline = $true
+$logTextBox.ScrollBars = [System.Windows.Forms.ScrollBars]::Vertical
+$logTextBox.ReadOnly = $true
+$logTextBox.Font = [System.Drawing.Font]::new("Consolas", 8)
+$logTextBox.BackColor = [System.Drawing.Color]::FromArgb(248, 250, 252)
+$logTextBox.ForeColor = [System.Drawing.Color]::FromArgb(51, 65, 85)
+$logTextBox.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+$logGroup.Controls.Add($logTextBox)
+
 $saveButton = New-Object System.Windows.Forms.Button
 $saveButton.Text = "Save configuration"
 $saveButton.Font = [System.Drawing.Font]::new("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-$saveButton.Location = New-Object System.Drawing.Point 10, 520
+$saveButton.Location = New-Object System.Drawing.Point 10, 620
 $saveButton.Size = New-Object System.Drawing.Size 160, 35
 $saveButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $saveButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(34, 197, 94)
@@ -1060,7 +1145,7 @@ $form.Controls.Add($saveButton)
 $startButton = New-Object System.Windows.Forms.Button
 $startButton.Text = "▶ Start service"
 $startButton.Font = [System.Drawing.Font]::new("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-$startButton.Location = New-Object System.Drawing.Point 190, 520
+$startButton.Location = New-Object System.Drawing.Point 190, 620
 $startButton.Size = New-Object System.Drawing.Size 140, 35
 $startButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $startButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(59, 130, 246)
@@ -1070,21 +1155,21 @@ $startButton.Cursor = [System.Windows.Forms.Cursors]::Hand
 $form.Controls.Add($startButton)
 
 $killTargetButton = New-Object System.Windows.Forms.Button
-$killTargetButton.Text = "Kill target"
-$killTargetButton.Font = [System.Drawing.Font]::new("Segoe UI", 9)
-$killTargetButton.Location = New-Object System.Drawing.Point 360, 520
-$killTargetButton.Size = New-Object System.Drawing.Size 120, 35
+$killTargetButton.Text = "⚠ Kill target now"
+$killTargetButton.Font = [System.Drawing.Font]::new("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$killTargetButton.Location = New-Object System.Drawing.Point 360, 620
+$killTargetButton.Size = New-Object System.Drawing.Size 140, 35
 $killTargetButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $killTargetButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(239, 68, 68)
-$killTargetButton.BackColor = [System.Drawing.Color]::FromArgb(254, 242, 242)
-$killTargetButton.ForeColor = [System.Drawing.Color]::FromArgb(220, 38, 38)
+$killTargetButton.BackColor = [System.Drawing.Color]::FromArgb(239, 68, 68)
+$killTargetButton.ForeColor = [System.Drawing.Color]::White
 $killTargetButton.Cursor = [System.Windows.Forms.Cursors]::Hand
 $form.Controls.Add($killTargetButton)
 
 $exitAppButton = New-Object System.Windows.Forms.Button
 $exitAppButton.Text = "Exit"
 $exitAppButton.Font = [System.Drawing.Font]::new("Segoe UI", 9)
-$exitAppButton.Location = New-Object System.Drawing.Point 700, 520
+$exitAppButton.Location = New-Object System.Drawing.Point 720, 620
 $exitAppButton.Size = New-Object System.Drawing.Size 100, 35
 $exitAppButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $exitAppButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(156, 163, 175)
@@ -1094,12 +1179,14 @@ $exitAppButton.Cursor = [System.Windows.Forms.Cursors]::Hand
 $form.Controls.Add($exitAppButton)
 $toolTip.SetToolTip($killTargetButton, "Force-stop the configured process immediately, similar to Task Manager's End Task.")
 $toolTip.SetToolTip($exitAppButton, "Stop NO-P51 entirely and close the launcher.")
+$toolTip.SetToolTip($saveButton, "Manually save configuration to config.json (auto-saves on valid changes).")
+$toolTip.SetToolTip($startButton, "Start or stop the background service that monitors global hotkeys.")
 
 $statusLabel = New-Object System.Windows.Forms.Label
 $statusLabel.Text = "Service stopped"
 $statusLabel.Font = [System.Drawing.Font]::new("Segoe UI Semibold", 9, [System.Drawing.FontStyle]::Bold)
 $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 116, 139)
-$statusLabel.Location = New-Object System.Drawing.Point 10, 490
+$statusLabel.Location = New-Object System.Drawing.Point 10, 590
 $statusLabel.AutoSize = $true
 $form.Controls.Add($statusLabel)
 
@@ -1107,7 +1194,7 @@ $configStatusLabel = New-Object System.Windows.Forms.Label
 $configStatusLabel.Text = ""
 $configStatusLabel.Font = [System.Drawing.Font]::new("Segoe UI", 8)
 $configStatusLabel.ForeColor = [System.Drawing.Color]::FromArgb(107, 114, 128)
-$configStatusLabel.Location = New-Object System.Drawing.Point 10, 560
+$configStatusLabel.Location = New-Object System.Drawing.Point 10, 660
 $configStatusLabel.AutoSize = $true
 $form.Controls.Add($configStatusLabel)
 
@@ -1161,6 +1248,7 @@ $script:uiControls = [pscustomobject]@{
   TrayIcon = $trayIcon
   ServiceMonitor = $serviceMonitor
   AutoSaveTimer = $autoSaveTimer
+  LogTextBox = $logTextBox
 }
 
 function Update-FallbackControls {
@@ -1431,10 +1519,10 @@ $startButton.add_MouseLeave({
 })
 
 $killTargetButton.add_MouseEnter({
-  $killTargetButton.BackColor = [System.Drawing.Color]::FromArgb(254, 226, 226)
+  $killTargetButton.BackColor = [System.Drawing.Color]::FromArgb(220, 38, 38)
 })
 $killTargetButton.add_MouseLeave({
-  $killTargetButton.BackColor = [System.Drawing.Color]::FromArgb(254, 242, 242)
+  $killTargetButton.BackColor = [System.Drawing.Color]::FromArgb(239, 68, 68)
 })
 
 $exitAppButton.add_MouseEnter({
@@ -1513,8 +1601,12 @@ $saveButton.add_Click({
     Show-Nop51Info "Configuration saved."
     Set-Nop51ConfigDirty -Dirty:$false
     Update-Nop51ConfigStatus "Configuration saved manually"
+    Add-Nop51LogMessage "Configuration saved manually" "INFO"
+    Play-Nop51GuiSound -SoundType "notif"
   } catch {
     Show-Nop51Error $_.Exception.Message
+    Add-Nop51LogMessage "Failed to save configuration: $($_.Exception.Message)" "ERROR"
+    Play-Nop51GuiSound -SoundType "error"
   }
 })
 
@@ -1523,8 +1615,11 @@ $startButton.add_Click({
     if ($script:serviceState.Status -eq "Running") {
       Stop-Nop51BackgroundService -SuppressAutoRestart
       Update-Nop51ServiceUi -StartButton $script:uiControls.StartButton -StatusLabel $script:uiControls.StatusLabel
+      Add-Nop51LogMessage "Service stopped manually" "INFO"
+      Play-Nop51GuiSound -SoundType "click"
       if ($script:serviceState.Error) {
         Show-Nop51Error "Service stopped with error: $($script:serviceState.Error)"
+        Add-Nop51LogMessage "Service error: $($script:serviceState.Error)" "ERROR"
         $script:serviceState.Error = $null
       }
       return
@@ -1535,8 +1630,12 @@ $startButton.add_Click({
     Update-Nop51ConfigStatus "Configuration saved"
     Start-Nop51BackgroundService -Path $ConfigPath
     Update-Nop51ServiceUi -StartButton $script:uiControls.StartButton -StatusLabel $script:uiControls.StatusLabel
+    Add-Nop51LogMessage "Service started" "INFO"
+    Play-Nop51GuiSound -SoundType "notif"
   } catch {
     Show-Nop51Error $_.Exception.Message
+    Add-Nop51LogMessage "Failed to start service: $($_.Exception.Message)" "ERROR"
+    Play-Nop51GuiSound -SoundType "error"
   }
 })
 
@@ -1554,6 +1653,8 @@ $killTargetButton.add_Click({
     Show-Nop51Info $modalMessage
   } catch {
     Show-Nop51Error $_.Exception.Message
+    Add-Nop51LogMessage "Failed to kill target: $($_.Exception.Message)" "ERROR"
+    Play-Nop51GuiSound -SoundType "error"
   }
 })
 
@@ -1670,6 +1771,8 @@ $form.add_Shown({
   Apply-Nop51IconToUi
   Update-Nop51ServiceUi -StartButton $script:uiControls.StartButton -StatusLabel $script:uiControls.StatusLabel
   Update-Nop51ConfigStatus "Configuration loaded"
+  Add-Nop51LogMessage "NO-P51 Control Panel started" "INFO"
+  Add-Nop51LogMessage "Configuration loaded from config.json" "INFO"
   $script:uiControls.ServiceMonitor.Start()
 })
 
