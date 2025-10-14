@@ -1,5 +1,5 @@
 ﻿{
-    "targetProcessName":  "firefox.exe",
+    "targetProcessName":  "steamwebhelper.exe",
     "hideStrategy":  "hide",
     "hideHotkey":  "=",
     "restoreHotkey":  "Ctrl+Alt+R",

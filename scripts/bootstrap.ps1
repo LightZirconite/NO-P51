@@ -505,7 +505,7 @@ Write-Host ""
 
 # Clean old log files (keep last 10)
 try {
-  $logFiles = Get-ChildItem -Path (Join-Path $script:repoRoot "bootstrap*.log") -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+  [array]$logFiles = Get-ChildItem -Path (Join-Path $script:repoRoot "bootstrap*.log") -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
   if ($logFiles.Count -gt 10) {
     $logFiles | Select-Object -Skip 10 | Remove-Item -Force -ErrorAction SilentlyContinue
   }
