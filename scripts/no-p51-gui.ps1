@@ -56,6 +56,8 @@ $script:userStopRequested = $false
 $script:repoRoot = Split-Path -Parent $PSScriptRoot
 $script:autoSaveTimer = $null
 $script:uiControls = $null
+$script:crashCount = 0
+$script:lastCrashTime = $null
 
 function New-Nop51DefaultConfig {
   return [pscustomobject]@{
@@ -64,6 +66,7 @@ function New-Nop51DefaultConfig {
     hideHotkey = "="
     restoreHotkey = "Ctrl+Alt+R"
     fallback = $null
+    recentProcesses = @()
   }
 }
 
@@ -329,6 +332,10 @@ function Save-Nop51ConfigFromForm {
     throw "Define both hide and restore hotkeys."
   }
 
+  if ($hideHotKey -eq $restoreHotKey) {
+    throw "Hide and restore hotkeys must be different. Current: both are set to '$hideHotKey'."
+  }
+
   $null = Convert-Nop51HotKey -HotKeyString $hideHotKey
   $null = Convert-Nop51HotKey -HotKeyString $restoreHotKey
 
@@ -361,6 +368,38 @@ function Save-Nop51ConfigFromForm {
     hideHotkey = $hideHotKey
     restoreHotkey = $restoreHotKey
     fallback = $fallback
+    recentProcesses = @()
+  }
+
+  # Load existing config to preserve recent processes
+  if (Test-Path -LiteralPath $ConfigPath) {
+    try {
+      $existingConfig = Read-Nop51Config -Path $ConfigPath
+      if ($existingConfig.recentProcesses) {
+        $configObject.recentProcesses = $existingConfig.recentProcesses
+      }
+    } catch {
+      # Ignore errors loading existing config
+    }
+  }
+
+  # Add current process to recent list (if not PID)
+  if (-not $usePidMode -and -not [string]::IsNullOrWhiteSpace($targetProcess)) {
+    $processName = $targetProcess
+    if (-not $processName.EndsWith(".exe", [System.StringComparison]::OrdinalIgnoreCase)) {
+      $processName = "$processName.exe"
+    }
+    
+    # Remove if already exists
+    $configObject.recentProcesses = @($configObject.recentProcesses | Where-Object { $_ -ne $processName })
+    
+    # Add at the beginning
+    $configObject.recentProcesses = @($processName) + $configObject.recentProcesses
+    
+    # Keep only last 5
+    if ($configObject.recentProcesses.Count -gt 5) {
+      $configObject.recentProcesses = $configObject.recentProcesses[0..4]
+    }
   }
 
   Assert-Nop51Config -Config $configObject
@@ -572,6 +611,12 @@ function Start-Nop51BackgroundService {
   $script:userStopRequested = $false
   $script:pendingServiceRestart = $false
   $script:serviceRestartCountdown = 0
+  
+  # Reset crash counter on manual start
+  if ($script:crashCount -ge 3) {
+    $script:crashCount = 0
+    $script:lastCrashTime = $null
+  }
 
   if (-not (Test-Path -LiteralPath $Path)) {
     throw "Configuration file not found at '$Path'."
@@ -815,16 +860,16 @@ $form.BackColor = [System.Drawing.Color]::FromArgb(245, 247, 250)
 $form.Icon = Get-Nop51AppIcon
 
 $quickHideButton = New-Object System.Windows.Forms.Button
-$quickHideButton.Text = "▲"
-$quickHideButton.Font = [System.Drawing.Font]::new("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$quickHideButton.Text = "▼ Hide"
+$quickHideButton.Font = [System.Drawing.Font]::new("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $quickHideButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $quickHideButton.FlatAppearance.BorderSize = 1
 $quickHideButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(100, 116, 139)
 $quickHideButton.BackColor = [System.Drawing.Color]::FromArgb(59, 130, 246)
 $quickHideButton.ForeColor = [System.Drawing.Color]::White
 $quickHideButton.UseVisualStyleBackColor = $false
-$quickHideButton.Location = New-Object System.Drawing.Point 812, 8
-$quickHideButton.Size = New-Object System.Drawing.Size 32, 32
+$quickHideButton.Location = New-Object System.Drawing.Point 775, 8
+$quickHideButton.Size = New-Object System.Drawing.Size 75, 32
 $quickHideButton.TabStop = $false
 $quickHideButton.Cursor = [System.Windows.Forms.Cursors]::Hand
 $form.Controls.Add($quickHideButton)
@@ -903,8 +948,22 @@ $targetGroup.Controls.Add($targetLabel)
 
 $targetText = New-Object System.Windows.Forms.TextBox
 $targetText.Location = New-Object System.Drawing.Point 270, 130
-$targetText.Size = New-Object System.Drawing.Size 150, 26
+$targetText.Size = New-Object System.Drawing.Size 120, 26
 $targetGroup.Controls.Add($targetText)
+
+$recentProcessesButton = New-Object System.Windows.Forms.Button
+$recentProcessesButton.Text = "▼"
+$recentProcessesButton.Font = [System.Drawing.Font]::new("Segoe UI", 8)
+$recentProcessesButton.Location = New-Object System.Drawing.Point 392, 130
+$recentProcessesButton.Size = New-Object System.Drawing.Size 28, 26
+$recentProcessesButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$recentProcessesButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(203, 213, 225)
+$recentProcessesButton.BackColor = [System.Drawing.Color]::FromArgb(241, 245, 249)
+$recentProcessesButton.ForeColor = [System.Drawing.Color]::FromArgb(51, 65, 85)
+$recentProcessesButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+$targetGroup.Controls.Add($recentProcessesButton)
+
+$recentProcessesMenu = New-Object System.Windows.Forms.ContextMenuStrip
 
 $usePidCheckbox = New-Object System.Windows.Forms.CheckBox
 $usePidCheckbox.Text = "Use PID when selecting"
@@ -951,6 +1010,17 @@ $toolTip.SetToolTip($targetText, "Enter the process executable name (extension o
 $toolTip.SetToolTip($usePidCheckbox, "Use this only when you must target a specific PID; it will change next time the app starts.")
 $toolTip.SetToolTip($hideStrategyCombo, "Choose whether the hide hotkey only conceals the window or attempts to terminate the process.")
 $toolTip.SetToolTip($privilegeStatusLabel, "Exposure of current privileges: administrator mode unlocks stronger fallback strategies.")
+$toolTip.SetToolTip($hideHotkeyText, "Click here and press your desired keyboard shortcut to set the hide hotkey.")
+$toolTip.SetToolTip($restoreHotkeyText, "Click here and press your desired keyboard shortcut to set the restore hotkey.")
+$toolTip.SetToolTip($fallbackNone, "No action will be taken when hiding the target process.")
+$toolTip.SetToolTip($fallbackApp, "Launch an executable when hiding the target (e.g., notepad.exe).")
+$toolTip.SetToolTip($fallbackUrl, "Open a URL in the default browser when hiding the target (e.g., https://google.com).")
+$toolTip.SetToolTip($fallbackValueText, "Specify the path to an executable or a URL depending on the selected fallback mode.")
+$toolTip.SetToolTip($fallbackAutoClose, "Automatically close the fallback application when restoring the target process.")
+$toolTip.SetToolTip($saveButton, "Save the current configuration to config.json.")
+$toolTip.SetToolTip($startButton, "Start or stop the background service that monitors hotkeys and manages the target process.")
+$toolTip.SetToolTip($refreshProcessesButton, "Refresh the list of running processes.")
+$toolTip.SetToolTip($recentProcessesButton, "Show recently used processes for quick selection.")
 
 $hotkeyGroup = New-Object System.Windows.Forms.GroupBox
 $hotkeyGroup.Text = "Hotkeys"
@@ -1139,6 +1209,8 @@ $script:uiControls = [pscustomobject]@{
   ProcessFilterText = $processFilterText
   ProcessList = $processList
   TargetText = $targetText
+  RecentProcessesButton = $recentProcessesButton
+  RecentProcessesMenu = $recentProcessesMenu
   UsePidCheckbox = $usePidCheckbox
   QuickHideButton = $quickHideButton
   HideStrategyCombo = $hideStrategyCombo
@@ -1460,6 +1532,38 @@ $refreshProcessesButton.add_MouseLeave({
 
 $refreshProcessesButton.add_Click({ Refresh-ProcessList -PreserveSelection })
 
+$recentProcessesButton.add_Click({
+  $recentProcessesMenu.Items.Clear()
+  
+  # Load recent processes from config
+  if (Test-Path -LiteralPath $ConfigPath) {
+    try {
+      $config = Read-Nop51Config -Path $ConfigPath
+      if ($config.recentProcesses -and $config.recentProcesses.Count -gt 0) {
+        foreach ($proc in $config.recentProcesses) {
+          $menuItem = $recentProcessesMenu.Items.Add($proc)
+          $menuItem.add_Click({
+            param($sender, $e)
+            $script:uiControls.TargetText.Text = $sender.Text
+            Set-Nop51ConfigDirty -SyncNow
+          })
+        }
+      } else {
+        $noRecentItem = $recentProcessesMenu.Items.Add("(No recent processes)")
+        $noRecentItem.Enabled = $false
+      }
+    } catch {
+      $errorItem = $recentProcessesMenu.Items.Add("(Error loading recent processes)")
+      $errorItem.Enabled = $false
+    }
+  } else {
+    $noConfigItem = $recentProcessesMenu.Items.Add("(No config file found)")
+    $noConfigItem.Enabled = $false
+  }
+  
+  $recentProcessesMenu.Show($recentProcessesButton, 0, $recentProcessesButton.Height)
+})
+
 $script:uiControls.FallbackNone.add_CheckedChanged({
   Update-FallbackControls
   if ($script:isLoadingConfig) { return }
@@ -1506,6 +1610,38 @@ $fallbackFullscreen.add_CheckedChanged({
 
 $hideHotkeyText.add_KeyDown({ Handle-HotkeyKeyDown -TextBox $script:uiControls.HideHotkeyText -EventArgs $_ })
 $restoreHotkeyText.add_KeyDown({ Handle-HotkeyKeyDown -TextBox $script:uiControls.RestoreHotkeyText -EventArgs $_ })
+
+$hideHotkeyText.add_TextChanged({
+  if ($script:isLoadingConfig) { return }
+  Check-HotkeyCollision
+})
+
+$restoreHotkeyText.add_TextChanged({
+  if ($script:isLoadingConfig) { return }
+  Check-HotkeyCollision
+})
+
+function Check-HotkeyCollision {
+  if (-not $script:uiControls) { return }
+  
+  $hideKey = $script:uiControls.HideHotkeyText.Text.Trim()
+  $restoreKey = $script:uiControls.RestoreHotkeyText.Text.Trim()
+  
+  if ([string]::IsNullOrWhiteSpace($hideKey) -or [string]::IsNullOrWhiteSpace($restoreKey)) {
+    $script:uiControls.HideHotkeyText.BackColor = [System.Drawing.Color]::White
+    $script:uiControls.RestoreHotkeyText.BackColor = [System.Drawing.Color]::White
+    return
+  }
+  
+  if ($hideKey -eq $restoreKey) {
+    $script:uiControls.HideHotkeyText.BackColor = [System.Drawing.Color]::FromArgb(254, 226, 226)
+    $script:uiControls.RestoreHotkeyText.BackColor = [System.Drawing.Color]::FromArgb(254, 226, 226)
+    Update-Nop51ConfigStatus "Warning: Hide and restore hotkeys are identical!"
+  } else {
+    $script:uiControls.HideHotkeyText.BackColor = [System.Drawing.Color]::White
+    $script:uiControls.RestoreHotkeyText.BackColor = [System.Drawing.Color]::White
+  }
+}
 
 $saveButton.add_Click({
   try {
@@ -1610,10 +1746,26 @@ $serviceMonitor.add_Tick({
     Update-Nop51ServiceUi -StartButton $script:uiControls.StartButton -StatusLabel $script:uiControls.StatusLabel
     if ($script:serviceState.Error) {
       if (-not $script:userStopRequested) {
-        $script:pendingServiceRestart = $true
-        $script:serviceRestartCountdown = 3
-        $script:uiControls.TrayIcon.Visible = $true
-  $script:uiControls.TrayIcon.ShowBalloonTip(2000, "NO-P51", "Service stopped: $($script:serviceState.Error)`nAutomatic restart in 3 s.", [System.Windows.Forms.ToolTipIcon]::Warning)
+        # Increment crash counter
+        $now = Get-Date
+        if ($script:lastCrashTime -and (($now - $script:lastCrashTime).TotalMinutes -lt 5)) {
+          $script:crashCount++
+        } else {
+          $script:crashCount = 1
+        }
+        $script:lastCrashTime = $now
+        
+        # Warning if too many crashes
+        if ($script:crashCount -ge 3) {
+          Update-Nop51ConfigStatus "Warning: Service has crashed $script:crashCount times recently!"
+          $script:uiControls.StatusLabel.ForeColor = [System.Drawing.Color]::FromArgb(220, 38, 38)
+          $script:uiControls.TrayIcon.ShowBalloonTip(3000, "NO-P51 - Repeated Crashes", "The service has crashed $script:crashCount times. Check your configuration or target process.", [System.Windows.Forms.ToolTipIcon]::Error)
+        } else {
+          $script:pendingServiceRestart = $true
+          $script:serviceRestartCountdown = 3
+          $script:uiControls.TrayIcon.Visible = $true
+          $script:uiControls.TrayIcon.ShowBalloonTip(2000, "NO-P51", "Service stopped: $($script:serviceState.Error)`nAutomatic restart in 3 s.", [System.Windows.Forms.ToolTipIcon]::Warning)
+        }
       } else {
         Show-Nop51Error "Service stopped: $($script:serviceState.Error)"
       }
@@ -1622,7 +1774,7 @@ $serviceMonitor.add_Tick({
       $script:pendingServiceRestart = $true
       $script:serviceRestartCountdown = 3
       $script:uiControls.TrayIcon.Visible = $true
-  $script:uiControls.TrayIcon.ShowBalloonTip(1500, "NO-P51", "Service interrupted. Automatic restart in 3 s.", [System.Windows.Forms.ToolTipIcon]::Warning)
+      $script:uiControls.TrayIcon.ShowBalloonTip(1500, "NO-P51", "Service interrupted. Automatic restart in 3 s.", [System.Windows.Forms.ToolTipIcon]::Warning)
     }
   }
 })
