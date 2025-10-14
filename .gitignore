@@ -2,9 +2,7 @@
 config.json
 config.local.json
 
-# Logs and caches
-bootstrap.log
-.update-cache
+# Logs and temporary files
 logs/
 
 # Temporary or backup files

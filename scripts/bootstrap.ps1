@@ -1,14 +1,10 @@
 param(
-  [string]$ConfigPath = (Join-Path -Path (Split-Path -Parent $PSScriptRoot) -ChildPath "config.json"),
-  [switch]$SkipUpdateCheck,
-  [switch]$ForceUpdate,
-  [switch]$Verbose
+  [string]$ConfigPath = (Join-Path -Path (Split-Path -Parent $PSScriptRoot) -ChildPath "config.json")
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$script:repoRoot = Split-Path -Parent $PSScriptRoot
 $script:guiScriptPath = Join-Path $PSScriptRoot "no-p51-gui.ps1"
 
 function Start-GuiApplication {
