@@ -874,20 +874,20 @@ $form.MaximizeBox = $false
 $form.StartPosition = "CenterScreen"
 $form.AutoScaleDimensions = New-Object System.Drawing.SizeF 96, 96
 $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
-$form.ClientSize = New-Object System.Drawing.Size 860, 720
+$form.ClientSize = New-Object System.Drawing.Size 1000, 650
 $form.BackColor = [System.Drawing.Color]::FromArgb(245, 247, 250)
 $form.Icon = Get-Nop51AppIcon
 
 $quickHideButton = New-Object System.Windows.Forms.Button
-$quickHideButton.Text = "▲"
-$quickHideButton.Font = [System.Drawing.Font]::new("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$quickHideButton.Text = "^"
+$quickHideButton.Font = [System.Drawing.Font]::new("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
 $quickHideButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $quickHideButton.FlatAppearance.BorderSize = 1
 $quickHideButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(100, 116, 139)
 $quickHideButton.BackColor = [System.Drawing.Color]::FromArgb(59, 130, 246)
 $quickHideButton.ForeColor = [System.Drawing.Color]::White
 $quickHideButton.UseVisualStyleBackColor = $false
-$quickHideButton.Location = New-Object System.Drawing.Point 812, 8
+$quickHideButton.Location = New-Object System.Drawing.Point 952, 8
 $quickHideButton.Size = New-Object System.Drawing.Size 32, 32
 $quickHideButton.TabStop = $false
 $quickHideButton.Cursor = [System.Windows.Forms.Cursors]::Hand
@@ -897,7 +897,7 @@ $targetGroup = New-Object System.Windows.Forms.GroupBox
 $targetGroup.Text = "Target"
 $targetGroup.Font = [System.Drawing.Font]::new("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Bold)
 $targetGroup.Location = New-Object System.Drawing.Point 10, 45
-$targetGroup.Size = New-Object System.Drawing.Size 420, 340
+$targetGroup.Size = New-Object System.Drawing.Size 480, 320
 $targetGroup.BackColor = [System.Drawing.Color]::White
 $targetGroup.ForeColor = [System.Drawing.Color]::FromArgb(30, 41, 59)
 $form.Controls.Add($targetGroup)
@@ -1019,8 +1019,8 @@ $toolTip.SetToolTip($privilegeStatusLabel, "Exposure of current privileges: admi
 $hotkeyGroup = New-Object System.Windows.Forms.GroupBox
 $hotkeyGroup.Text = "Hotkeys"
 $hotkeyGroup.Font = [System.Drawing.Font]::new("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Bold)
-$hotkeyGroup.Location = New-Object System.Drawing.Point 440, 45
-$hotkeyGroup.Size = New-Object System.Drawing.Size 410, 150
+$hotkeyGroup.Location = New-Object System.Drawing.Point 500, 45
+$hotkeyGroup.Size = New-Object System.Drawing.Size 490, 150
 $hotkeyGroup.BackColor = [System.Drawing.Color]::White
 $hotkeyGroup.ForeColor = [System.Drawing.Color]::FromArgb(30, 41, 59)
 $form.Controls.Add($hotkeyGroup)
@@ -1060,8 +1060,8 @@ $hotkeyGroup.Controls.Add($hotkeyHint)
 $fallbackGroup = New-Object System.Windows.Forms.GroupBox
 $fallbackGroup.Text = "Fallback action"
 $fallbackGroup.Font = [System.Drawing.Font]::new("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Bold)
-$fallbackGroup.Location = New-Object System.Drawing.Point 10, 390
-$fallbackGroup.Size = New-Object System.Drawing.Size 840, 140
+$fallbackGroup.Location = New-Object System.Drawing.Point 10, 370
+$fallbackGroup.Size = New-Object System.Drawing.Size 980, 130
 $fallbackGroup.BackColor = [System.Drawing.Color]::White
 $fallbackGroup.ForeColor = [System.Drawing.Color]::FromArgb(30, 41, 59)
 $form.Controls.Add($fallbackGroup)
@@ -1093,18 +1093,18 @@ $fallbackGroup.Controls.Add($fallbackValueLabel)
 
 $fallbackValueText = New-Object System.Windows.Forms.TextBox
 $fallbackValueText.Location = New-Object System.Drawing.Point 150, 55
-$fallbackValueText.Size = New-Object System.Drawing.Size 360, 26
+$fallbackValueText.Size = New-Object System.Drawing.Size 480, 26
 $fallbackGroup.Controls.Add($fallbackValueText)
 
 $fallbackAutoClose = New-Object System.Windows.Forms.CheckBox
 $fallbackAutoClose.Text = "Close fallback app on restore"
-$fallbackAutoClose.Location = New-Object System.Drawing.Point 520, 55
+$fallbackAutoClose.Location = New-Object System.Drawing.Point 640, 55
 $fallbackAutoClose.AutoSize = $true
 $fallbackGroup.Controls.Add($fallbackAutoClose)
 
 $fallbackFullscreen = New-Object System.Windows.Forms.CheckBox
 $fallbackFullscreen.Text = "Toggle fullscreen (F11) after launch"
-$fallbackFullscreen.Location = New-Object System.Drawing.Point 520, 85
+$fallbackFullscreen.Location = New-Object System.Drawing.Point 640, 85
 $fallbackFullscreen.AutoSize = $true
 $fallbackGroup.Controls.Add($fallbackFullscreen)
 $toolTip.SetToolTip($fallbackFullscreen, "Send F11 when the fallback window appears to cover the screen quickly.")
@@ -1112,15 +1112,15 @@ $toolTip.SetToolTip($fallbackFullscreen, "Send F11 when the fallback window appe
 $logGroup = New-Object System.Windows.Forms.GroupBox
 $logGroup.Text = "Activity Log"
 $logGroup.Font = [System.Drawing.Font]::new("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Bold)
-$logGroup.Location = New-Object System.Drawing.Point 440, 200
-$logGroup.Size = New-Object System.Drawing.Size 410, 185
+$logGroup.Location = New-Object System.Drawing.Point 500, 200
+$logGroup.Size = New-Object System.Drawing.Size 490, 165
 $logGroup.BackColor = [System.Drawing.Color]::White
 $logGroup.ForeColor = [System.Drawing.Color]::FromArgb(30, 41, 59)
 $form.Controls.Add($logGroup)
 
 $logTextBox = New-Object System.Windows.Forms.TextBox
 $logTextBox.Location = New-Object System.Drawing.Point 10, 25
-$logTextBox.Size = New-Object System.Drawing.Size 390, 150
+$logTextBox.Size = New-Object System.Drawing.Size 470, 130
 $logTextBox.Multiline = $true
 $logTextBox.ScrollBars = [System.Windows.Forms.ScrollBars]::Vertical
 $logTextBox.ReadOnly = $true
@@ -1133,7 +1133,7 @@ $logGroup.Controls.Add($logTextBox)
 $saveButton = New-Object System.Windows.Forms.Button
 $saveButton.Text = "Save configuration"
 $saveButton.Font = [System.Drawing.Font]::new("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-$saveButton.Location = New-Object System.Drawing.Point 10, 620
+$saveButton.Location = New-Object System.Drawing.Point 10, 560
 $saveButton.Size = New-Object System.Drawing.Size 160, 35
 $saveButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $saveButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(34, 197, 94)
@@ -1143,9 +1143,9 @@ $saveButton.Cursor = [System.Windows.Forms.Cursors]::Hand
 $form.Controls.Add($saveButton)
 
 $startButton = New-Object System.Windows.Forms.Button
-$startButton.Text = "▶ Start service"
+$startButton.Text = "> Start service"
 $startButton.Font = [System.Drawing.Font]::new("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-$startButton.Location = New-Object System.Drawing.Point 190, 620
+$startButton.Location = New-Object System.Drawing.Point 190, 560
 $startButton.Size = New-Object System.Drawing.Size 140, 35
 $startButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $startButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(59, 130, 246)
@@ -1155,9 +1155,9 @@ $startButton.Cursor = [System.Windows.Forms.Cursors]::Hand
 $form.Controls.Add($startButton)
 
 $killTargetButton = New-Object System.Windows.Forms.Button
-$killTargetButton.Text = "⚠ Kill target now"
+$killTargetButton.Text = "! Kill target now"
 $killTargetButton.Font = [System.Drawing.Font]::new("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-$killTargetButton.Location = New-Object System.Drawing.Point 360, 620
+$killTargetButton.Location = New-Object System.Drawing.Point 360, 560
 $killTargetButton.Size = New-Object System.Drawing.Size 140, 35
 $killTargetButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $killTargetButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(239, 68, 68)
@@ -1169,7 +1169,7 @@ $form.Controls.Add($killTargetButton)
 $exitAppButton = New-Object System.Windows.Forms.Button
 $exitAppButton.Text = "Exit"
 $exitAppButton.Font = [System.Drawing.Font]::new("Segoe UI", 9)
-$exitAppButton.Location = New-Object System.Drawing.Point 720, 620
+$exitAppButton.Location = New-Object System.Drawing.Point 860, 560
 $exitAppButton.Size = New-Object System.Drawing.Size 100, 35
 $exitAppButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $exitAppButton.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(156, 163, 175)
@@ -1186,7 +1186,7 @@ $statusLabel = New-Object System.Windows.Forms.Label
 $statusLabel.Text = "Service stopped"
 $statusLabel.Font = [System.Drawing.Font]::new("Segoe UI Semibold", 9, [System.Drawing.FontStyle]::Bold)
 $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 116, 139)
-$statusLabel.Location = New-Object System.Drawing.Point 10, 590
+$statusLabel.Location = New-Object System.Drawing.Point 10, 530
 $statusLabel.AutoSize = $true
 $form.Controls.Add($statusLabel)
 
@@ -1194,7 +1194,7 @@ $configStatusLabel = New-Object System.Windows.Forms.Label
 $configStatusLabel.Text = ""
 $configStatusLabel.Font = [System.Drawing.Font]::new("Segoe UI", 8)
 $configStatusLabel.ForeColor = [System.Drawing.Color]::FromArgb(107, 114, 128)
-$configStatusLabel.Location = New-Object System.Drawing.Point 10, 660
+$configStatusLabel.Location = New-Object System.Drawing.Point 10, 600
 $configStatusLabel.AutoSize = $true
 $form.Controls.Add($configStatusLabel)
 
