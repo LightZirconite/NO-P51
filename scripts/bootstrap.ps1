@@ -297,14 +297,35 @@ function Invoke-GitUpdate {
   # Fetch and check if update is available BEFORE pulling
   Write-BootstrapLog "Fetching remote changes..." "Info"
   try {
-    & $GitCommand.Path -C $script:repoRoot fetch 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-      Write-BootstrapLog "Git fetch failed (code: $LASTEXITCODE)" "Warning"
+    $fetchOutput = & $GitCommand.Path -C $script:repoRoot fetch 2>&1
+    $fetchExitCode = $LASTEXITCODE
+
+    if ($fetchExitCode -ne 0) {
+      Write-BootstrapLog "Git fetch failed (code: $fetchExitCode)" "Warning"
+      if ($fetchOutput) {
+        foreach ($line in $fetchOutput) {
+          if (-not [string]::IsNullOrWhiteSpace($line)) {
+            Write-Host "  $line" -ForegroundColor Yellow
+          }
+        }
+      }
       Set-UpdateCache -LastCheck (Get-Date -Format "o") -LastCommit $currentHead -UpdateAvailable $false
       return $false
     }
+
+    if ($Verbose -and $fetchOutput) {
+      foreach ($line in $fetchOutput) {
+        if (-not [string]::IsNullOrWhiteSpace($line)) {
+          Write-Host "  $line" -ForegroundColor Cyan
+        }
+      }
+    }
   } catch {
     Write-BootstrapLog "Exception during fetch: $($_.Exception.Message)" "Warning"
+    if ($_.Exception.InnerException) {
+      Write-BootstrapLog "Inner exception: $($_.Exception.InnerException.Message)" "Warning"
+    }
+    Write-BootstrapLog "Run 'git -C $script:repoRoot fetch' manually for details." "Warning"
     Set-UpdateCache -LastCheck (Get-Date -Format "o") -LastCommit $currentHead -UpdateAvailable $false
     return $false
   }
