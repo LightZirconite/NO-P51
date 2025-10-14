@@ -209,7 +209,9 @@ function Invoke-GitPull {
   
   Write-BootstrapLog "Running: git pull $(if ($UseAutoStash) { '--autostash' })" "Info"
   
+  $previousErrorActionPreference = $ErrorActionPreference
   try {
+    $ErrorActionPreference = "Continue"
     $output = & $GitCommand.Path @pullArgs 2>&1
     $exitCode = $LASTEXITCODE
     
@@ -236,6 +238,8 @@ function Invoke-GitPull {
       Output = @($_.Exception.Message)
       Success = $false
     }
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
   }
 }
 
@@ -384,7 +388,9 @@ function Invoke-GitUpdate {
         $fallbackArgs += "--autostash"
       }
       
+      $previousErrorActionPreference = $ErrorActionPreference
       try {
+        $ErrorActionPreference = "Continue"
         $output = & $GitCommand.Path @fallbackArgs 2>&1
         $exitCode = $LASTEXITCODE
         
@@ -407,6 +413,8 @@ function Invoke-GitUpdate {
         Write-BootstrapLog "Exception during fallback pull: $($_.Exception.Message)" "Error"
         Set-UpdateCache -LastCheck (Get-Date -Format "o") -LastCommit $currentHead -UpdateAvailable $false
         return $false
+      } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
       }
     } else {
       Write-BootstrapLog "Git pull failed:" "Error"
