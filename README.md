@@ -1,4 +1,4 @@
-# NO-P51S
+# NO-P51
 
 NO-P51 est un utilitaire Windows portable qui permet de masquer rapidement une application choisie et de la restaurer à l'aide de raccourcis clavier globaux, sans privilèges administrateur. Une action optionnelle peut s'exécuter lorsqu'on masque l'application (ouvrir un site web ou lancer un autre programme) afin de détourner l'attention.
 
@@ -108,6 +108,7 @@ Les tests valident la lecture des combinaisons de touches et la cohérence de la
 - Prise en charge de plusieurs profils simultanés.
 - Historique des actions pour audit rapide.
 - Détection automatique du processus actif au moment du masquage.
+
 
 
 
