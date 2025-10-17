@@ -12,13 +12,11 @@ if not exist "%BOOTSTRAP_SCRIPT%" (
 REM Auto-update: git pull
 echo Checking for updates...
 cd /d "%SCRIPT_DIR%"
-for /f "delims=" %%i in ('git pull 2^>^&1') do set GIT_OUTPUT=%%i
-echo %GIT_OUTPUT% | find "Already up to date" >nul
-if %ERRORLEVEL% NEQ 0 (
-  echo Updates downloaded. Restarting...
-  timeout /t 2 >nul
-  call "%~f0"
-  exit /b 0
+git pull >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+  echo Updates checked successfully.
+) else (
+  echo Warning: Could not check for updates.
 )
 
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "& '%BOOTSTRAP_SCRIPT%'"
