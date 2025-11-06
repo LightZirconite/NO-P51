@@ -12,7 +12,7 @@ if not exist "%BOOTSTRAP_SCRIPT%" (
 
 REM Auto-update check
 if exist "%UPDATE_SCRIPT%" (
-  powershell.exe -NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "& '%UPDATE_SCRIPT%'"
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "& '%UPDATE_SCRIPT%'"
 )
 
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "& '%BOOTSTRAP_SCRIPT%'"

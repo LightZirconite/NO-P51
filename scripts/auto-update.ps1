@@ -41,6 +41,7 @@ function Get-LatestCommit {
     $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers @{ "User-Agent" = "NO-P51-Updater" } -TimeoutSec 10
     return $response.sha
   } catch {
+    Write-Host "Unable to check for updates" -ForegroundColor Yellow
     return $null
   }
 }
@@ -52,6 +53,8 @@ function Download-AndExtract {
   )
   
   try {
+    Write-Host "Downloading update..." -ForegroundColor Cyan
+    
     $tempZip = Join-Path -Path $env:TEMP -ChildPath "NO-P51-update-$(Get-Random).zip"
     $tempExtract = Join-Path -Path $env:TEMP -ChildPath "NO-P51-extract-$(Get-Random)"
     
@@ -61,8 +64,11 @@ function Download-AndExtract {
     $webClient.DownloadFile($ZipUrl, $tempZip)
     
     if (-not (Test-Path $tempZip)) {
+      Write-Host "Download failed" -ForegroundColor Red
       return $false
     }
+    
+    Write-Host "Installing update..." -ForegroundColor Cyan
     
     # Extract
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -71,6 +77,7 @@ function Download-AndExtract {
     # Find extracted folder
     $extractedFolder = Get-ChildItem -Path $tempExtract -Directory | Select-Object -First 1
     if (-not $extractedFolder) {
+      Write-Host "Extraction failed" -ForegroundColor Red
       return $false
     }
     
@@ -113,9 +120,11 @@ function Download-AndExtract {
     Remove-Item -Path $tempZip -Force -ErrorAction SilentlyContinue
     Remove-Item -Path $tempExtract -Recurse -Force -ErrorAction SilentlyContinue
     
+    Write-Host "Update installed successfully" -ForegroundColor Green
     return $true
     
   } catch {
+    Write-Host "Update failed: $($_.Exception.Message)" -ForegroundColor Red
     return $false
   }
 }
@@ -139,8 +148,11 @@ function Install-Update {
   $newVersion = Test-UpdateAvailable
   
   if (-not $newVersion) {
+    Write-Host "No updates available" -ForegroundColor Green
     return $false
   }
+  
+  Write-Host "New update available!" -ForegroundColor Yellow
   
   $zipUrl = "https://github.com/$script:repoOwner/$script:repoName/archive/refs/heads/main.zip"
   
@@ -153,14 +165,22 @@ function Install-Update {
 }
 
 function Start-AutoUpdate {
+  Write-Host ""
+  Write-Host "Checking for updates..." -ForegroundColor Cyan
+  
   if (Install-Update) {
     # Update successful, restart
+    Write-Host "Restarting application..." -ForegroundColor Cyan
+    Start-Sleep -Seconds 2
+    
     $batFile = Join-Path -Path $script:projectRoot -ChildPath "NO-P51.bat"
     if (Test-Path $batFile) {
       Start-Process -FilePath $batFile
       exit 0
     }
   }
+  
+  Write-Host ""
 }
 
 # Run if called directly
