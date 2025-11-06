@@ -8,7 +8,11 @@ Describe "Convert-Nop51HotKey" {
     $result = Convert-Nop51HotKey -HotKeyString "Ctrl+Alt+H"
     $result.Modifiers | Should Be ([uint32]0x0003)
     $result.Key | Should Be ([System.Windows.Forms.Keys]::H)
-    $result.Display | Should Be "CTRL+ALT+H"
+        $result.Display | Should Be "CTRL+ALT+D1"
+  }
+}
+
+Describe "Read-Nop51Config" {
   }
 
   It "parses digit keys" {
@@ -108,30 +112,5 @@ Describe "Assert-Nop51Config" {
     }
 
     { Assert-Nop51Config -Config $config } | Should Throw
-  }
-}
-
-Describe "Get-Nop51GitStatusItems" {
-  It "parses a modified file" {
-    $result = Get-Nop51GitStatusItems -Lines @(" M config.json")
-    @($result).Count | Should Be 1
-    $result[0].Status | Should Be " M"
-    $result[0].Path | Should Be "config.json"
-  }
-
-  It "takes the destination of a rename" {
-    $result = Get-Nop51GitStatusItems -Lines @("R  old.txt -> new.txt")
-    @($result).Count | Should Be 1
-    $result[0].Path | Should Be "new.txt"
-  }
-}
-
-Describe "Test-Nop51AllowedGitPath" {
-  It "accepts config json" {
-    (Test-Nop51AllowedGitPath -Path "config.json") | Should Be $true
-  }
-
-  It "rejects other files" {
-    (Test-Nop51AllowedGitPath -Path "scripts/no-p51-gui.ps1") | Should Be $false
   }
 }

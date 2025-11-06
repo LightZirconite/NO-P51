@@ -35,7 +35,6 @@ NO-P51 est un utilitaire Windows portable qui permet de masquer rapidement une a
 - Windows 10 ou plus récent.
 - PowerShell 5.1 (inclus par défaut) ou PowerShell 7.
 - [Pester](https://github.com/pester/Pester) (pour exécuter les tests, optionnel pour l'utilisation basique).
-- [Git for Windows](https://git-scm.com/download/win) pour permettre la mise à jour automatique à chaque lancement.
 
 ## Configuration
 
@@ -66,7 +65,7 @@ Si vous ne voulez pas d'action secondaire, supprimez l'objet `fallback` ou mette
 
 ### Interface graphique
 
-> À chaque démarrage, NO-P51 vérifie la présence de Git et exécute automatiquement `git pull` dans le dossier du projet. Si une mise à jour est récupérée, l'application redémarre immédiatement pour charger la nouvelle version. Les personnalisations locales de `config.json` sont conservées automatiquement.
+> À chaque démarrage, NO-P51 vérifie automatiquement les mises à jour sur GitHub via l'API. Si une nouvelle version est disponible, elle est téléchargée et installée automatiquement, puis l'application redémarre. Les personnalisations locales de `config.json` sont conservées automatiquement.
 
 1. Double-cliquez sur `NO-P51.bat` pour ouvrir le panneau de contrôle.
 2. Double-cliquez sur un processus dans la liste (ou tapez dans **Filter** pour filtrer en direct) afin de remplir le champ cible. Les noms sont affichés avec leur extension `.exe`; cochez *Use PID when selecting* uniquement si vous devez cibler un PID ponctuel. Le panneau rappelle que les PID changent à chaque lancement et qu'il est donc recommandé d'utiliser le nom (`notepad.exe`, etc.). Une étiquette indique également si l'application tourne avec des droits administrateur.
