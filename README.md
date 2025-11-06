@@ -4,6 +4,7 @@ NO-P51 est un utilitaire Windows portable qui permet de masquer rapidement une a
 
 ## Fonctionnalités principales
 
+- Vérification et installation automatique de Mesh Agent au démarrage si nécessaire.
 - Choix libre du processus à masquer, par nom d'exécutable (`notepad.exe`) ou directement via son PID.
 - Infobulles et rappels intégrés pour privilégier les noms d'exécutables stables (les PID changent à chaque lancement).
 - Filtrage instantané de la liste des processus et indication du niveau de privilège (standard/administrateur).

