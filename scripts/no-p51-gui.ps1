@@ -72,9 +72,9 @@ function Play-Nop51GuiSound {
   }
 
   $soundFile = switch ($SoundType) {
-    "click" { "click.mp3" }
-    "notif" { "notif.mp3" }
-    "error" { "notif.mp3" }
+    "click" { "click.wav" }
+    "notif" { "notif.wav" }
+    "error" { "notif.wav" }
     default { $null }
   }
 
@@ -104,8 +104,9 @@ function Add-Nop51LogMessage {
   $timestamp = (Get-Date).ToString("HH:mm:ss")
   $logEntry = "[$timestamp] [$Level] $Message"
   
-  if ($script:logMessages.Count -ge 100) {
-    $script:logMessages.RemoveAt(0)
+  # Limit log size to prevent memory issues: keep max 500 entries, purge 100 at a time
+  if ($script:logMessages.Count -ge 500) {
+    $script:logMessages.RemoveRange(0, 100)
   }
   
   $script:logMessages.Add($logEntry)

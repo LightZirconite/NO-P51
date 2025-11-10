@@ -23,9 +23,9 @@ function Play-Nop51Sound {
   }
 
   $soundFile = switch ($SoundType) {
-    "click" { "click.mp3" }
-    "notif" { "notif.mp3" }
-    "error" { "notif.mp3" }
+    "click" { "click.wav" }
+    "notif" { "notif.wav" }
+    "error" { "notif.wav" }
     default { $null }
   }
 

@@ -1,5 +1,11 @@
 # NO-P51
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue.svg)](https://github.com/PowerShell/PowerShell)
+[![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)](https://www.microsoft.com/windows)
+
+> **🚀 Quick Start**: New to NO-P51? Check out the [Quick Start Guide](QUICKSTART.md) to get up and running in minutes!
+
 NO-P51 est un utilitaire Windows portable qui permet de masquer rapidement une application choisie et de la restaurer à l'aide de raccourcis clavier globaux, sans privilèges administrateur. Une action optionnelle peut s'exécuter lorsqu'on masque l'application (ouvrir un site web ou lancer un autre programme) afin de détourner l'attention.
 
 ## Fonctionnalités principales
@@ -26,9 +32,10 @@ NO-P51 est un utilitaire Windows portable qui permet de masquer rapidement une a
 - `scripts/no-p51-gui.ps1` : interface graphique pour configurer et piloter NO-P51.
 - `NO-P51.bat` : unique lanceur (ouvre l'interface graphique et gère le service).
 - `config.json` : configuration utilisateur (processus, raccourcis, action fallback).
-- `songs/` : fichiers audio pour le feedback sonore (click.mp3, notif.mp3).
+- `songs/` : fichiers audio pour le feedback sonore (click.wav, notif.wav).
 - `tests/no-p51.Tests.ps1` : tests unitaires Pester pour les fonctions critiques.
 - `CHANGELOG.md` : historique détaillé des versions et améliorations.
+- `ROADMAP.md` : évolutions futures et feuille de route.
 
 ## Prérequis
 
@@ -103,11 +110,11 @@ Les tests valident la lecture des combinaisons de touches et la cohérence de la
   powershell -NoLogo -ExecutionPolicy Bypass -File "scripts\no-p51-gui.ps1"
   ```
 
-## Prochaines évolutions possibles
+## Contributions et Licence
 
-- Prise en charge de plusieurs profils simultanés.
-- Historique des actions pour audit rapide.
-- Détection automatique du processus actif au moment du masquage.
+Ce projet est sous licence MIT. Consultez le fichier [LICENSE](LICENSE) pour plus de détails.
+
+Pour les évolutions futures planifiées, consultez la [feuille de route](ROADMAP.md).
 
 
 

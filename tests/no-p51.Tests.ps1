@@ -8,12 +8,9 @@ Describe "Convert-Nop51HotKey" {
     $result = Convert-Nop51HotKey -HotKeyString "Ctrl+Alt+H"
     $result.Modifiers | Should Be ([uint32]0x0003)
     $result.Key | Should Be ([System.Windows.Forms.Keys]::H)
-        $result.Display | Should Be "CTRL+ALT+D1"
+    $result.Display | Should Be "CTRL+ALT+H"
   }
 }
-
-Describe "Read-Nop51Config" {
-  }
 
   It "parses digit keys" {
     $result = Convert-Nop51HotKey -HotKeyString "Win+2"

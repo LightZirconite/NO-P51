@@ -1,5 +1,6 @@
 # auto-update.ps1
 # Automatic update system using GitHub API
+# Checks for new commits on main branch and updates the local installation
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "SilentlyContinue"
 
