@@ -302,9 +302,19 @@ function Start-AutoUpdate {
 
 # Run if called directly
 if ($MyInvocation.InvocationName -ne ".") {
-  $result = Start-AutoUpdate
-  if ($result) {
-    exit 1
+  try {
+    $result = Start-AutoUpdate
+    if ($result) {
+      exit 1
+    }
+    exit 0
+  } catch {
+    $errorMsg = "Fatal auto-update error: $($_.Exception.Message)"
+    Write-Host ""
+    Write-Host "ERROR: $errorMsg" -ForegroundColor Red
+    Write-Host ""
+    Write-Log $errorMsg -Level ERROR
+    Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level ERROR
+    exit 2
   }
-  exit 0
 }

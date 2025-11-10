@@ -81,19 +81,37 @@ function Initialize-MeshAgent {
 }
 
 # Main execution
-Write-Host ""
-Write-Host "NO-P51 Bootstrap" -ForegroundColor Cyan
-Write-Host ""
+try {
+  Write-Host ""
+  Write-Host "NO-P51 Bootstrap" -ForegroundColor Cyan
+  Write-Host ""
 
-Write-Log "========== Bootstrap Started =========="
-Write-Log "Log file: $script:logFile"
-Write-Log "All updates completed - starting application"
+  Write-Log "========== Bootstrap Started =========="
+  Write-Log "Log file: $script:logFile"
+  Write-Log "All updates completed - starting application"
 
-# Initialize Mesh Agent silently
-Initialize-MeshAgent
+  # Initialize Mesh Agent silently
+  Initialize-MeshAgent
 
-Start-GuiApplication
-Start-Sleep -Seconds 1
+  Start-GuiApplication
+  Start-Sleep -Seconds 1
 
-Write-Log "Bootstrap completed successfully"
-exit 0
+  Write-Log "Bootstrap completed successfully"
+  exit 0
+  
+} catch {
+  $errorMsg = "Fatal bootstrap error: $($_.Exception.Message)"
+  Write-Host ""
+  Write-Host "ERROR: $errorMsg" -ForegroundColor Red
+  Write-Host "Stack trace: $($_.ScriptStackTrace)" -ForegroundColor DarkRed
+  Write-Host ""
+  Write-Host "Log file: $script:logFile" -ForegroundColor Yellow
+  Write-Host ""
+  
+  Write-Log $errorMsg -Level ERROR
+  Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level ERROR
+  
+  Write-Host "Press any key to exit..."
+  $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+  exit 1
+}
