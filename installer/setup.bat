@@ -79,18 +79,7 @@ echo Downloading from: %GITHUB_URL%
 echo.
 
 REM Download using PowerShell
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$ProgressPreference = 'SilentlyContinue'; ^
-    try { ^
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^
-        $webClient = New-Object System.Net.WebClient; ^
-        $webClient.Headers.Add('User-Agent', 'NO-P51-Installer'); ^
-        $webClient.DownloadFile('%GITHUB_URL%', '%ZIP_FILE%'); ^
-        Write-Host '[OK] Download completed successfully' -ForegroundColor Green; ^
-    } catch { ^
-        Write-Host '[ERROR] Download failed:' $_.Exception.Message -ForegroundColor Red; ^
-        exit 1; ^
-    }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference = 'SilentlyContinue'; try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $webClient = New-Object System.Net.WebClient; $webClient.Headers.Add('User-Agent', 'NO-P51-Installer'); $webClient.DownloadFile('%GITHUB_URL%', '%ZIP_FILE%'); Write-Host '[OK] Download completed successfully' -ForegroundColor Green; } catch { Write-Host '[ERROR] Download failed:' $_.Exception.Message -ForegroundColor Red; exit 1; }"
 
 if %errorLevel% neq 0 goto INSTALL_FAILED
 if not exist "%ZIP_FILE%" goto INSTALL_FAILED
@@ -102,10 +91,7 @@ echo ========================================
 echo.
 
 REM Extract using PowerShell
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "Add-Type -AssemblyName System.IO.Compression.FileSystem; ^
-    [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%EXTRACT_DIR%'); ^
-    Write-Host '[OK] Extraction completed' -ForegroundColor Green"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%EXTRACT_DIR%'); Write-Host '[OK] Extraction completed' -ForegroundColor Green"
 
 if %errorLevel% neq 0 goto INSTALL_FAILED
 
@@ -186,9 +172,8 @@ echo [OK] NO-P51 has been successfully installed!
 echo.
 echo Installation directory: %INSTALL_DIR%
 echo Desktop shortcut: %USERPROFILE%\Desktop\NO-P51.lnk
-echo Uninstaller: %INSTALL_DIR%\uninstall.bat
 echo.
-echo To uninstall, run: %INSTALL_DIR%\uninstall.bat
+echo You can uninstall anytime by running setup.bat again (option 2)
 echo.
 echo.
 set /p LAUNCH="Launch NO-P51 now? (Y/N): "
@@ -345,15 +330,7 @@ set "WORKDIR=%INSTALL_DIR%"
 
 echo [INFO] Creating desktop shortcut...
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$WScriptShell = New-Object -ComObject WScript.Shell; ^
-    $Shortcut = $WScriptShell.CreateShortcut('%SHORTCUT%'); ^
-    $Shortcut.TargetPath = '%TARGET%'; ^
-    $Shortcut.WorkingDirectory = '%WORKDIR%'; ^
-    $Shortcut.IconLocation = '%ICON%'; ^
-    $Shortcut.Description = 'NO-P51 - Hide applications with global hotkeys'; ^
-    $Shortcut.WindowStyle = 7; ^
-    $Shortcut.Save()" 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$WScriptShell = New-Object -ComObject WScript.Shell; $Shortcut = $WScriptShell.CreateShortcut('%SHORTCUT%'); $Shortcut.TargetPath = '%TARGET%'; $Shortcut.WorkingDirectory = '%WORKDIR%'; $Shortcut.IconLocation = '%ICON%'; $Shortcut.Description = 'NO-P51 - Hide applications with global hotkeys'; $Shortcut.WindowStyle = 7; $Shortcut.Save()" 2>nul
 
 if exist "%SHORTCUT%" (
     echo [OK] Desktop shortcut created
@@ -372,15 +349,7 @@ set "STARTMENU_SHORTCUT=%STARTMENU%\NO-P51.lnk"
 
 echo [INFO] Creating Start Menu shortcut...
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$WScriptShell = New-Object -ComObject WScript.Shell; ^
-    $Shortcut = $WScriptShell.CreateShortcut('%STARTMENU_SHORTCUT%'); ^
-    $Shortcut.TargetPath = '%TARGET%'; ^
-    $Shortcut.WorkingDirectory = '%WORKDIR%'; ^
-    $Shortcut.IconLocation = '%ICON%'; ^
-    $Shortcut.Description = 'NO-P51 - Hide applications with global hotkeys'; ^
-    $Shortcut.WindowStyle = 7; ^
-    $Shortcut.Save()" 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$WScriptShell = New-Object -ComObject WScript.Shell; $Shortcut = $WScriptShell.CreateShortcut('%STARTMENU_SHORTCUT%'); $Shortcut.TargetPath = '%TARGET%'; $Shortcut.WorkingDirectory = '%WORKDIR%'; $Shortcut.IconLocation = '%ICON%'; $Shortcut.Description = 'NO-P51 - Hide applications with global hotkeys'; $Shortcut.WindowStyle = 7; $Shortcut.Save()" 2>nul
 
 if exist "%STARTMENU_SHORTCUT%" (
     echo [OK] Start Menu shortcut created

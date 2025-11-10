@@ -67,10 +67,7 @@ NO-P51 est un utilitaire Windows portable qui permet de masquer rapidement une a
 - Désinstaller NO-P51 (option 2)
 - Réparer/Mettre à jour (option 3)
 
-**Désinstallation alternative:**
-Une fois installé, vous pouvez aussi lancer `uninstall.bat` directement depuis le répertoire d'installation.
-
-Pour plus d'options d'installation, consultez [installer/README.md](installer/README.md).
+Pour plus d'options, consultez [installer/README.md](installer/README.md).
 
 ### Installation manuelle (Développeurs)
 
