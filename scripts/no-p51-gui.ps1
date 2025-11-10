@@ -14,6 +14,28 @@ Add-Type -Namespace Win32 -Name NativeMethods -MemberDefinition @"
 
 . (Join-Path $PSScriptRoot "no-p51.ps1")
 
+# Initialize logging
+$script:logDir = Join-Path -Path (Split-Path -Parent $PSScriptRoot) -ChildPath "logs"
+$script:logFile = Join-Path -Path $script:logDir -ChildPath "no-p51-gui-$(Get-Date -Format 'yyyy-MM-dd').log"
+
+function Write-FileLog {
+  param(
+    [string]$Message,
+    [ValidateSet('INFO', 'WARN', 'ERROR')]
+    [string]$Level = 'INFO'
+  )
+  
+  $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+  $logMessage = "[$timestamp] [$Level] $Message"
+  
+  try {
+    if (-not (Test-Path $script:logDir)) {
+      New-Item -Path $script:logDir -ItemType Directory -Force | Out-Null
+    }
+    Add-Content -Path $script:logFile -Value $logMessage -ErrorAction SilentlyContinue
+  } catch {}
+}
+
 class Nop51ProcessItem {
   [string]$ProcessName
   [int]$Id
@@ -625,30 +647,35 @@ function Start-Nop51BackgroundService {
   )
 
   if ($script:serviceState.Status -eq "Running") {
+    Write-FileLog "Service already running, skipping start"
     return
   }
 
+  Write-FileLog "Starting background service with config: $Path"
   $script:userStopRequested = $false
   $script:pendingServiceRestart = $false
   $script:serviceRestartCountdown = 0
 
   if (-not (Test-Path -LiteralPath $Path)) {
-    throw "Configuration file not found at '$Path'."
+    $errorMsg = "Configuration file not found at '$Path'."
+    Write-FileLog $errorMsg -Level ERROR
+    throw $errorMsg
   }
 
-  $runspace = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
-  $runspace.ApartmentState = [System.Threading.ApartmentState]::STA
-  $runspace.ThreadOptions = [System.Management.Automation.Runspaces.PSThreadOptions]::ReuseThread
-  $runspace.Open()
+  try {
+    $runspace = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
+    $runspace.ApartmentState = [System.Threading.ApartmentState]::STA
+    $runspace.ThreadOptions = [System.Management.Automation.Runspaces.PSThreadOptions]::ReuseThread
+    $runspace.Open()
 
-  $powerShell = [PowerShell]::Create()
-  $powerShell.Runspace = $runspace
+    $powerShell = [PowerShell]::Create()
+    $powerShell.Runspace = $runspace
 
-  $cts = [System.Threading.CancellationTokenSource]::new()
-  $coreScriptPath = $script:serviceScriptPath
-  $coreScriptPathLiteral = $coreScriptPath -replace "'", "''"
+    $cts = [System.Threading.CancellationTokenSource]::new()
+    $coreScriptPath = $script:serviceScriptPath
+    $coreScriptPathLiteral = $coreScriptPath -replace "'", "''"
 
-  $serviceScript = @"
+    $serviceScript = @"
 param(
   [string]`$cfgPath,
   [System.Threading.CancellationToken]`$token
@@ -660,17 +687,24 @@ Set-StrictMode -Version Latest
 Start-NOP51 -ConfigPath `$cfgPath -CancellationToken `$token
 "@
 
-  $powerShell.AddScript($serviceScript).AddArgument($Path).AddArgument($cts.Token) | Out-Null
+    $powerShell.AddScript($serviceScript).AddArgument($Path).AddArgument($cts.Token) | Out-Null
 
-  $handle = $powerShell.BeginInvoke()
+    $handle = $powerShell.BeginInvoke()
 
-  $script:serviceState = [pscustomobject]@{
-    Runspace = $runspace
-    PowerShell = $powerShell
-    Cancellation = $cts
-    Handle = $handle
-    Status = "Running"
-    Error = $null
+    $script:serviceState = [pscustomobject]@{
+      Runspace = $runspace
+      PowerShell = $powerShell
+      Cancellation = $cts
+      Handle = $handle
+      Status = "Running"
+      Error = $null
+    }
+    
+    Write-FileLog "Background service started successfully"
+  } catch {
+    $errorMsg = "Failed to start background service: $($_.Exception.Message)"
+    Write-FileLog $errorMsg -Level ERROR
+    throw
   }
 }
 
@@ -1796,4 +1830,21 @@ if ($MyInvocation.InvocationName -eq ".") {
   return
 }
 
-[System.Windows.Forms.Application]::Run($form)
+Write-FileLog "========== NO-P51 GUI Starting =========="
+Write-FileLog "Log file: $script:logFile"
+Write-FileLog "Config path: $ConfigPath"
+
+try {
+  [System.Windows.Forms.Application]::Run($form)
+  Write-FileLog "Application closed normally"
+} catch {
+  $errorMsg = "Fatal error in GUI: $($_.Exception.Message)`n$($_.ScriptStackTrace)"
+  Write-FileLog $errorMsg -Level ERROR
+  [System.Windows.Forms.MessageBox]::Show(
+    "A fatal error occurred:`n`n$($_.Exception.Message)`n`nCheck logs at: $script:logFile",
+    "NO-P51 Error",
+    [System.Windows.Forms.MessageBoxButtons]::OK,
+    [System.Windows.Forms.MessageBoxIcon]::Error
+  )
+  throw
+}

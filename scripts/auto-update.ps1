@@ -225,6 +225,7 @@ function Test-UpdateAvailable {
     
     if ($currentVersion -ne $latestCommit) {
       Write-Host "New commit available: $shortCommit" -ForegroundColor Yellow
+      Write-Log "New commit available: $shortCommit (current: $($currentVersion.Substring(0,7) if $currentVersion else 'none'))"
       return @{
         Version = $latestCommit
         ZipUrl = "https://github.com/$script:repoOwner/$script:repoName/archive/refs/heads/main.zip"
@@ -232,6 +233,7 @@ function Test-UpdateAvailable {
       }
     } else {
       Write-Host "Already up to date ($shortCommit)" -ForegroundColor Green
+      Write-Log "Already up to date: $shortCommit"
       return $null
     }
   }
@@ -244,22 +246,30 @@ function Install-Update {
   $updateInfo = Test-UpdateAvailable
   
   if (-not $updateInfo) {
+    Write-Log "No update available"
     return $false
   }
   
   Write-Host "Installing update..." -ForegroundColor Yellow
+  Write-Log "========== Installing Update =========="
   
   if ($updateInfo.Type -eq "release") {
     Write-Host "Release: $($updateInfo.Version)" -ForegroundColor Cyan
+    Write-Log "Update type: Release $($updateInfo.Version)"
   } else {
     Write-Host "Commit: $($updateInfo.Version.Substring(0, 7))" -ForegroundColor Cyan
+    Write-Log "Update type: Commit $($updateInfo.Version.Substring(0, 7))"
   }
+  
+  Write-Log "Download URL: $($updateInfo.ZipUrl)"
   
   if (Download-AndExtract -ZipUrl $updateInfo.ZipUrl -DestinationPath $script:projectRoot) {
     Set-CurrentVersion -Version $updateInfo.Version
+    Write-Log "Version updated to: $($updateInfo.Version)"
     return $true
   }
   
+  Write-Log "Update installation failed" -Level ERROR
   return $false
 }
 
@@ -269,12 +279,21 @@ function Start-AutoUpdate {
   Write-Log "========== Auto-Update Started =========="
   Write-Log "Current version file: $script:currentVersionFile"
   
+  $currentVer = Get-CurrentVersion
+  if ($currentVer) {
+    Write-Log "Current local version: $currentVer"
+  } else {
+    Write-Log "No local version found (first run)"
+  }
+  
   $updateInstalled = Install-Update
   
   if ($updateInstalled) {
-    Write-Log "Update successfully installed"
+    Write-Log "========== UPDATE INSTALLED - RESTART REQUIRED =========="
+    Write-Host ""
+    Write-Host "Update installed successfully! Restarting..." -ForegroundColor Green
   } else {
-    Write-Log "No update needed or update failed"
+    Write-Log "No update installed - proceeding with launch"
   }
   
   Write-Host ""

@@ -87,6 +87,7 @@ Write-Host ""
 
 Write-Log "========== Bootstrap Started =========="
 Write-Log "Log file: $script:logFile"
+Write-Log "All updates completed - starting application"
 
 # Initialize Mesh Agent silently
 Initialize-MeshAgent
