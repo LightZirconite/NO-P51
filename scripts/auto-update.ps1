@@ -321,9 +321,12 @@ if ($MyInvocation.InvocationName -ne ".") {
     $errorMsg = "Fatal auto-update error: $($_.Exception.Message)"
     Write-Host ""
     Write-Host "ERROR: $errorMsg" -ForegroundColor Red
+    Write-Host "Stack trace: $($_.ScriptStackTrace)" -ForegroundColor DarkRed
     Write-Host ""
     Write-Log $errorMsg -Level ERROR
     Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level ERROR
+    Write-Host "Press any key to continue..."
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
     exit 2
   }
 }
