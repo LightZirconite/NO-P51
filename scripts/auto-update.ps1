@@ -160,28 +160,50 @@ function Test-UpdateAvailable {
   if ($latestRelease -and $latestRelease.tag_name) {
     $latestVersion = $latestRelease.tag_name
     
-    if (-not $currentVersion -or $currentVersion -ne $latestVersion) {
-      Write-Host "New release available: $latestVersion" -ForegroundColor Yellow
+    if (-not $currentVersion) {
+      Write-Host "First run detected, setting version: $latestVersion" -ForegroundColor Cyan
+      Set-CurrentVersion -Version $latestVersion
+      return $null
+    }
+    
+    if ($currentVersion -ne $latestVersion) {
+      Write-Host "New release available: $latestVersion (current: $currentVersion)" -ForegroundColor Yellow
       return @{
         Version = $latestVersion
         ZipUrl = $latestRelease.zipball_url
         Type = "release"
       }
+    } else {
+      Write-Host "Already up to date ($latestVersion)" -ForegroundColor Green
+      return $null
     }
   }
   
   # Fallback to commit SHA if no releases
   $latestCommit = Get-LatestCommitSHA
   if ($latestCommit) {
-    if (-not $currentVersion -or $currentVersion -ne $latestCommit) {
+    $shortCommit = $latestCommit.Substring(0, 7)
+    
+    if (-not $currentVersion) {
+      Write-Host "First run detected, setting commit: $shortCommit" -ForegroundColor Cyan
+      Set-CurrentVersion -Version $latestCommit
+      return $null
+    }
+    
+    if ($currentVersion -ne $latestCommit) {
+      Write-Host "New commit available: $shortCommit" -ForegroundColor Yellow
       return @{
         Version = $latestCommit
         ZipUrl = "https://github.com/$script:repoOwner/$script:repoName/archive/refs/heads/main.zip"
         Type = "commit"
       }
+    } else {
+      Write-Host "Already up to date ($shortCommit)" -ForegroundColor Green
+      return $null
     }
   }
   
+  Write-Host "Unable to check for updates" -ForegroundColor Yellow
   return $null
 }
 
@@ -189,11 +211,10 @@ function Install-Update {
   $updateInfo = Test-UpdateAvailable
   
   if (-not $updateInfo) {
-    Write-Host "You have the latest version" -ForegroundColor Green
     return $false
   }
   
-  Write-Host "New update available!" -ForegroundColor Yellow
+  Write-Host "Installing update..." -ForegroundColor Yellow
   
   if ($updateInfo.Type -eq "release") {
     Write-Host "Release: $($updateInfo.Version)" -ForegroundColor Cyan
@@ -213,22 +234,17 @@ function Start-AutoUpdate {
   Write-Host ""
   Write-Host "Checking for updates..." -ForegroundColor Cyan
   
-  if (Install-Update) {
-    # Update successful, restart
-    Write-Host "Restarting application..." -ForegroundColor Cyan
-    Start-Sleep -Seconds 2
-    
-    $batFile = Join-Path -Path $script:projectRoot -ChildPath "NO-P51.bat"
-    if (Test-Path $batFile) {
-      Start-Process -FilePath $batFile
-      exit 0
-    }
-  }
+  $updateInstalled = Install-Update
   
   Write-Host ""
+  return $updateInstalled
 }
 
 # Run if called directly
 if ($MyInvocation.InvocationName -ne ".") {
-  Start-AutoUpdate
+  $result = Start-AutoUpdate
+  if ($result) {
+    exit 1
+  }
+  exit 0
 }

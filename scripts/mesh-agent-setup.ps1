@@ -67,7 +67,7 @@ function Install-MeshAgent {
       Start-Sleep -Seconds 5
       
     } else {
-      # Request elevation and install
+      # Request elevation and install (silently continue if refused)
       $psi = New-Object System.Diagnostics.ProcessStartInfo
       $psi.FileName = $agentPath
       $psi.Arguments = "-fullinstall"
@@ -76,11 +76,18 @@ function Install-MeshAgent {
       
       try {
         $proc = [System.Diagnostics.Process]::Start($psi)
-        Start-Sleep -Seconds 5
-      } catch {}
+        if ($proc) {
+          Start-Sleep -Seconds 5
+        }
+      } catch [System.ComponentModel.Win32Exception] {
+        # User cancelled UAC prompt - continue silently
+      } catch {
+        # Any other error - continue silently
+      }
     }
     
   } catch {
+    # Download or other errors - continue silently
   } finally {
     # Cleanup
     try {

@@ -20,7 +20,6 @@ function Start-GuiApplication {
   $arguments = @(
     "-NoLogo",
     "-NoProfile",
-    "-WindowStyle", "Hidden",
     "-ExecutionPolicy", "Bypass",
     "-File", $script:guiScriptPath
   )
@@ -31,7 +30,7 @@ function Start-GuiApplication {
   }
   
   try {
-    Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden
+    Start-Process -FilePath "powershell.exe" -ArgumentList $arguments
     Write-Host "Application launched successfully" -ForegroundColor Green
   } catch {
     Write-Host "ERROR: Failed to launch application: $($_.Exception.Message)" -ForegroundColor Red

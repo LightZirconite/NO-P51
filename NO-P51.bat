@@ -10,9 +10,16 @@ if not exist "%BOOTSTRAP_SCRIPT%" (
   exit /b 1
 )
 
+:CHECK_UPDATE
 REM Auto-update check
+set UPDATE_INSTALLED=0
 if exist "%UPDATE_SCRIPT%" (
-  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "& '%UPDATE_SCRIPT%'"
+  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$result = & '%UPDATE_SCRIPT%'; if ($result) { exit 1 } else { exit 0 }"
+  if errorlevel 1 (
+    echo Update installed, restarting...
+    timeout /t 2 /nobreak >nul
+    goto CHECK_UPDATE
+  )
 )
 
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "& '%BOOTSTRAP_SCRIPT%'"
