@@ -34,6 +34,7 @@ NO-P51 est un utilitaire Windows portable qui permet de masquer rapidement une a
 - `config.json` : configuration utilisateur (processus, raccourcis, action fallback).
 - `songs/` : fichiers audio pour le feedback sonore (click.wav, notif.wav).
 - `tests/no-p51.Tests.ps1` : tests unitaires Pester pour les fonctions critiques.
+- `installer/` : installateur automatique pour Windows avec création de raccourcis.
 - `CHANGELOG.md` : historique détaillé des versions et améliorations.
 - `ROADMAP.md` : évolutions futures et feuille de route.
 
@@ -42,6 +43,38 @@ NO-P51 est un utilitaire Windows portable qui permet de masquer rapidement une a
 - Windows 10 ou plus récent.
 - PowerShell 5.1 (inclus par défaut) ou PowerShell 7.
 - [Pester](https://github.com/pester/Pester) (pour exécuter les tests, optionnel pour l'utilisation basique).
+
+## Installation
+
+### Installation automatique (Recommandée)
+
+**Méthode la plus simple - Un seul fichier!**
+
+1. Téléchargez **`setup.bat`** depuis la page [Releases](https://github.com/LightZirconite/NO-P51/releases)
+2. Double-cliquez sur `setup.bat`
+3. Choisissez l'option **1. Install NO-P51**
+4. L'installateur va automatiquement :
+   - Télécharger la dernière version depuis GitHub
+   - Installer dans le répertoire approprié
+   - Créer un raccourci Bureau avec l'icône `logo.ico`
+   - Créer un raccourci Menu Démarrer
+
+**Emplacements d'installation:**
+- Avec privilèges admin : `C:\Program Files\NO-P51\`
+- Sans privilèges admin : `%LOCALAPPDATA%\NO-P51\`
+
+**Le même fichier `setup.bat` permet aussi de:**
+- Désinstaller NO-P51 (option 2)
+- Réparer/Mettre à jour (option 3)
+
+**Désinstallation alternative:**
+Une fois installé, vous pouvez aussi lancer `uninstall.bat` directement depuis le répertoire d'installation.
+
+Pour plus d'options d'installation, consultez [installer/README.md](installer/README.md).
+
+### Installation manuelle (Développeurs)
+
+Clonez le dépôt et lancez directement `NO-P51.bat` depuis le répertoire du projet.
 
 ## Configuration
 

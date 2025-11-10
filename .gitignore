@@ -16,6 +16,10 @@ logs/
 *.temp
 ~*
 
+# Installer temporary files
+installer/*.zip
+installer/temp/
+
 # Windows
 Thumbs.db
 Desktop.ini
@@ -32,3 +36,6 @@ $RECYCLE.BIN/
 # Build artifacts
 *.zip
 *.7z
+
+# Exclude installer executables from git
+installer/*.exe

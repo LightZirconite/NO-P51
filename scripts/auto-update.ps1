@@ -1,8 +1,8 @@
 # auto-update.ps1
 # Automatic update system using GitHub API
-# Checks for new commits on main branch and updates the local installation
+# Checks for new releases and updates the local installation
 Set-StrictMode -Version Latest
-$ErrorActionPreference = "SilentlyContinue"
+$ErrorActionPreference = "Stop"
 
 $script:repoOwner = "LightZirconite"
 $script:repoName = "NO-P51"
@@ -26,23 +26,37 @@ function Set-CurrentVersion {
   } catch {}
 }
 
-function Get-LatestRelease {
+function Get-LatestReleaseFromAPI {
   try {
+    Write-Host "Checking for updates via GitHub API..." -ForegroundColor Cyan
+    
     $apiUrl = "https://api.github.com/repos/$script:repoOwner/$script:repoName/releases/latest"
-    $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers @{ "User-Agent" = "NO-P51-Updater" } -TimeoutSec 10
+    $headers = @{
+      "User-Agent" = "NO-P51-Updater"
+      "Accept" = "application/vnd.github.v3+json"
+    }
+    
+    $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers -TimeoutSec 10
     return $response
+    
   } catch {
+    Write-Host "Unable to check for updates" -ForegroundColor Yellow
     return $null
   }
 }
 
-function Get-LatestCommit {
+function Get-LatestCommitSHA {
   try {
     $apiUrl = "https://api.github.com/repos/$script:repoOwner/$script:repoName/commits/main"
-    $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers @{ "User-Agent" = "NO-P51-Updater" } -TimeoutSec 10
+    $headers = @{
+      "User-Agent" = "NO-P51-Updater"
+      "Accept" = "application/vnd.github.v3+json"
+    }
+    
+    $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers -TimeoutSec 10
     return $response.sha
+    
   } catch {
-    Write-Host "Unable to check for updates" -ForegroundColor Yellow
     return $null
   }
 }
@@ -59,10 +73,18 @@ function Download-AndExtract {
     $tempZip = Join-Path -Path $env:TEMP -ChildPath "NO-P51-update-$(Get-Random).zip"
     $tempExtract = Join-Path -Path $env:TEMP -ChildPath "NO-P51-extract-$(Get-Random)"
     
-    # Download
+    # Download with progress
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $webClient = New-Object System.Net.WebClient
     $webClient.Headers.Add("User-Agent", "NO-P51-Updater")
-    $webClient.DownloadFile($ZipUrl, $tempZip)
+    $webClient.Headers.Add("Accept", "application/vnd.github.v3+json")
+    
+    try {
+      $webClient.DownloadFile($ZipUrl, $tempZip)
+    } catch {
+      Write-Host "Download failed: $($_.Exception.Message)" -ForegroundColor Red
+      return $false
+    }
     
     if (-not (Test-Path $tempZip)) {
       Write-Host "Download failed" -ForegroundColor Red
@@ -132,33 +154,55 @@ function Download-AndExtract {
 
 function Test-UpdateAvailable {
   $currentVersion = Get-CurrentVersion
-  $latestCommit = Get-LatestCommit
   
-  if (-not $latestCommit) {
-    return $false
+  # Try to get latest release first
+  $latestRelease = Get-LatestReleaseFromAPI
+  if ($latestRelease -and $latestRelease.tag_name) {
+    $latestVersion = $latestRelease.tag_name
+    
+    if (-not $currentVersion -or $currentVersion -ne $latestVersion) {
+      Write-Host "New release available: $latestVersion" -ForegroundColor Yellow
+      return @{
+        Version = $latestVersion
+        ZipUrl = $latestRelease.zipball_url
+        Type = "release"
+      }
+    }
   }
   
-  if (-not $currentVersion -or $currentVersion -ne $latestCommit) {
-    return $latestCommit
+  # Fallback to commit SHA if no releases
+  $latestCommit = Get-LatestCommitSHA
+  if ($latestCommit) {
+    if (-not $currentVersion -or $currentVersion -ne $latestCommit) {
+      return @{
+        Version = $latestCommit
+        ZipUrl = "https://github.com/$script:repoOwner/$script:repoName/archive/refs/heads/main.zip"
+        Type = "commit"
+      }
+    }
   }
   
-  return $false
+  return $null
 }
 
 function Install-Update {
-  $newVersion = Test-UpdateAvailable
+  $updateInfo = Test-UpdateAvailable
   
-  if (-not $newVersion) {
-    Write-Host "No updates available" -ForegroundColor Green
+  if (-not $updateInfo) {
+    Write-Host "You have the latest version" -ForegroundColor Green
     return $false
   }
   
   Write-Host "New update available!" -ForegroundColor Yellow
   
-  $zipUrl = "https://github.com/$script:repoOwner/$script:repoName/archive/refs/heads/main.zip"
+  if ($updateInfo.Type -eq "release") {
+    Write-Host "Release: $($updateInfo.Version)" -ForegroundColor Cyan
+  } else {
+    Write-Host "Commit: $($updateInfo.Version.Substring(0, 7))" -ForegroundColor Cyan
+  }
   
-  if (Download-AndExtract -ZipUrl $zipUrl -DestinationPath $script:projectRoot) {
-    Set-CurrentVersion -Version $newVersion
+  if (Download-AndExtract -ZipUrl $updateInfo.ZipUrl -DestinationPath $script:projectRoot) {
+    Set-CurrentVersion -Version $updateInfo.Version
     return $true
   }
   
