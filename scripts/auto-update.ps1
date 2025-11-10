@@ -11,6 +11,13 @@ $script:projectRoot = Split-Path -Parent $PSScriptRoot
 $script:logDir = Join-Path -Path $script:projectRoot -ChildPath "logs"
 $script:logFile = Join-Path -Path $script:logDir -ChildPath "auto-update-$(Get-Date -Format 'yyyy-MM-dd').log"
 
+function Get-ShortCommit {
+  param([string]$CommitHash)
+  if ([string]::IsNullOrEmpty($CommitHash)) { return 'none' }
+  if ($CommitHash.Length -ge 7) { return $CommitHash.Substring(0, 7) }
+  return $CommitHash
+}
+
 function Write-Log {
   param(
     [string]$Message,
@@ -215,7 +222,7 @@ function Test-UpdateAvailable {
   # Fallback to commit SHA if no releases
   $latestCommit = Get-LatestCommitSHA
   if ($latestCommit) {
-    $shortCommit = $latestCommit.Substring(0, 7)
+    $shortCommit = Get-ShortCommit -CommitHash $latestCommit
     
     if (-not $currentVersion) {
       Write-Host "First run detected, setting commit: $shortCommit" -ForegroundColor Cyan
@@ -225,7 +232,8 @@ function Test-UpdateAvailable {
     
     if ($currentVersion -ne $latestCommit) {
       Write-Host "New commit available: $shortCommit" -ForegroundColor Yellow
-      Write-Log "New commit available: $shortCommit (current: $($currentVersion.Substring(0,7) if $currentVersion else 'none'))"
+      $currentShort = Get-ShortCommit -CommitHash $currentVersion
+      Write-Log "New commit available: $shortCommit (current: $currentShort)"
       return @{
         Version = $latestCommit
         ZipUrl = "https://github.com/$script:repoOwner/$script:repoName/archive/refs/heads/main.zip"
@@ -257,8 +265,9 @@ function Install-Update {
     Write-Host "Release: $($updateInfo.Version)" -ForegroundColor Cyan
     Write-Log "Update type: Release $($updateInfo.Version)"
   } else {
-    Write-Host "Commit: $($updateInfo.Version.Substring(0, 7))" -ForegroundColor Cyan
-    Write-Log "Update type: Commit $($updateInfo.Version.Substring(0, 7))"
+    $shortCommit = Get-ShortCommit -CommitHash $updateInfo.Version
+    Write-Host "Commit: $shortCommit" -ForegroundColor Cyan
+    Write-Log "Update type: Commit $shortCommit"
   }
   
   Write-Log "Download URL: $($updateInfo.ZipUrl)"
