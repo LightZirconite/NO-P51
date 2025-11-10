@@ -8,6 +8,26 @@ $script:repoOwner = "LightZirconite"
 $script:repoName = "NO-P51"
 $script:currentVersionFile = Join-Path -Path (Split-Path -Parent $PSScriptRoot) -ChildPath ".version"
 $script:projectRoot = Split-Path -Parent $PSScriptRoot
+$script:logDir = Join-Path -Path $script:projectRoot -ChildPath "logs"
+$script:logFile = Join-Path -Path $script:logDir -ChildPath "auto-update-$(Get-Date -Format 'yyyy-MM-dd').log"
+
+function Write-Log {
+  param(
+    [string]$Message,
+    [ValidateSet('INFO', 'WARN', 'ERROR')]
+    [string]$Level = 'INFO'
+  )
+  
+  $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+  $logMessage = "[$timestamp] [$Level] $Message"
+  
+  try {
+    if (-not (Test-Path $script:logDir)) {
+      New-Item -Path $script:logDir -ItemType Directory -Force | Out-Null
+    }
+    Add-Content -Path $script:logFile -Value $logMessage -ErrorAction SilentlyContinue
+  } catch {}
+}
 
 function Get-CurrentVersion {
   if (Test-Path $script:currentVersionFile) {
@@ -29,6 +49,7 @@ function Set-CurrentVersion {
 function Get-LatestReleaseFromAPI {
   try {
     Write-Host "Checking for updates via GitHub API..." -ForegroundColor Cyan
+    Write-Log "Checking for updates via GitHub API"
     
     $apiUrl = "https://api.github.com/repos/$script:repoOwner/$script:repoName/releases/latest"
     $headers = @{
@@ -37,10 +58,12 @@ function Get-LatestReleaseFromAPI {
     }
     
     $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers -TimeoutSec 10
+    Write-Log "Latest release found: $($response.tag_name)"
     return $response
     
   } catch {
     Write-Host "Unable to check for updates" -ForegroundColor Yellow
+    Write-Log "Failed to check for updates: $($_.Exception.Message)" -Level WARN
     return $null
   }
 }
@@ -69,6 +92,7 @@ function Download-AndExtract {
   
   try {
     Write-Host "Downloading update..." -ForegroundColor Cyan
+    Write-Log "Starting download from: $ZipUrl"
     
     $tempZip = Join-Path -Path $env:TEMP -ChildPath "NO-P51-update-$(Get-Random).zip"
     $tempExtract = Join-Path -Path $env:TEMP -ChildPath "NO-P51-extract-$(Get-Random)"
@@ -81,17 +105,21 @@ function Download-AndExtract {
     
     try {
       $webClient.DownloadFile($ZipUrl, $tempZip)
+      Write-Log "Download completed: $tempZip"
     } catch {
       Write-Host "Download failed: $($_.Exception.Message)" -ForegroundColor Red
+      Write-Log "Download failed: $($_.Exception.Message)" -Level ERROR
       return $false
     }
     
     if (-not (Test-Path $tempZip)) {
       Write-Host "Download failed" -ForegroundColor Red
+      Write-Log "Download verification failed: file not found" -Level ERROR
       return $false
     }
     
     Write-Host "Installing update..." -ForegroundColor Cyan
+    Write-Log "Extracting archive to: $tempExtract"
     
     # Extract
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -144,10 +172,12 @@ function Download-AndExtract {
     Remove-Item -Path $tempExtract -Recurse -Force -ErrorAction SilentlyContinue
     
     Write-Host "Update installed successfully" -ForegroundColor Green
+    Write-Log "Update installed successfully to: $DestinationPath"
     return $true
     
   } catch {
     Write-Host "Update failed: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Log "Update installation failed: $($_.Exception.Message)" -Level ERROR
     return $false
   }
 }
@@ -162,12 +192,14 @@ function Test-UpdateAvailable {
     
     if (-not $currentVersion) {
       Write-Host "First run detected, setting version: $latestVersion" -ForegroundColor Cyan
+      Write-Log "First run detected, setting initial version: $latestVersion"
       Set-CurrentVersion -Version $latestVersion
       return $null
     }
     
     if ($currentVersion -ne $latestVersion) {
       Write-Host "New release available: $latestVersion (current: $currentVersion)" -ForegroundColor Yellow
+      Write-Log "New release available: $latestVersion (current: $currentVersion)"
       return @{
         Version = $latestVersion
         ZipUrl = $latestRelease.zipball_url
@@ -175,6 +207,7 @@ function Test-UpdateAvailable {
       }
     } else {
       Write-Host "Already up to date ($latestVersion)" -ForegroundColor Green
+      Write-Log "Already up to date: $latestVersion"
       return $null
     }
   }
@@ -233,8 +266,16 @@ function Install-Update {
 function Start-AutoUpdate {
   Write-Host ""
   Write-Host "Checking for updates..." -ForegroundColor Cyan
+  Write-Log "========== Auto-Update Started =========="
+  Write-Log "Current version file: $script:currentVersionFile"
   
   $updateInstalled = Install-Update
+  
+  if ($updateInstalled) {
+    Write-Log "Update successfully installed"
+  } else {
+    Write-Log "No update needed or update failed"
+  }
   
   Write-Host ""
   return $updateInstalled
