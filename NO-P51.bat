@@ -24,4 +24,8 @@ if exist "%UPDATE_SCRIPT%" (
 
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "& '%BOOTSTRAP_SCRIPT%' *>&1"
 
+echo.
+echo Application closed.
+echo.
+pause >nul
 endlocal

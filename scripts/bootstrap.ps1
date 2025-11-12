@@ -42,34 +42,17 @@ function Start-GuiApplication {
     exit 1
   }
   
-  $arguments = @(
-    "-NoLogo",
-    "-NoProfile",
-    "-ExecutionPolicy", "Bypass",
-    "-File", $script:guiScriptPath
-  )
-  
-  if ($ConfigPath) {
-    $arguments += "-ConfigPath"
-    $arguments += $ConfigPath
-  }
-  
   try {
-    Write-Log "Launching GUI in separate process"
+    Write-Log "Executing GUI script directly in same process"
     Write-Host "Starting GUI application..." -ForegroundColor Green
+    Write-Host ""
     
-    # Launch GUI in a new process without waiting
-    $process = Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -PassThru
+    # Execute GUI directly in the same PowerShell process (not Start-Process)
+    & $script:guiScriptPath -ConfigPath $ConfigPath
     
-    # Wait briefly to check if it crashes immediately
-    Start-Sleep -Milliseconds 800
-    
-    if ($process.HasExited) {
-      throw "GUI process exited immediately with code: $($process.ExitCode). Check logs for details."
-    }
-    
-    Write-Host "GUI launched successfully (PID: $($process.Id))" -ForegroundColor Green
-    Write-Log "GUI launched successfully (PID: $($process.Id))"
+    Write-Host ""
+    Write-Host "GUI application closed." -ForegroundColor Cyan
+    Write-Log "GUI application closed"
   } catch {
     $errorMsg = "Failed to launch application: $($_.Exception.Message)"
     Write-Host ""
