@@ -36,31 +36,31 @@ function Start-GuiApplication {
     $errorMsg = "GUI script not found: $script:guiScriptPath"
     Write-Host "ERROR: $errorMsg" -ForegroundColor Red
     Write-Log $errorMsg -Level ERROR
-    Read-Host "Press Enter to exit"
+    Write-Host ""
+    Write-Host "Press Enter to exit..."
+    Read-Host
     exit 1
   }
   
-  $arguments = @(
-    "-NoLogo",
-    "-NoProfile",
-    "-ExecutionPolicy", "Bypass",
-    "-File", $script:guiScriptPath
-  )
-  
-  if ($ConfigPath) {
-    $arguments += "-ConfigPath"
-    $arguments += $ConfigPath
-  }
-  
   try {
-    Start-Process -FilePath "powershell.exe" -ArgumentList $arguments
-    Write-Host "Application launched successfully" -ForegroundColor Green
-    Write-Log "Application launched successfully"
+    Write-Log "Executing GUI script directly"
+    Write-Host "Starting GUI application..." -ForegroundColor Green
+    Write-Host ""
+    # Execute the GUI script directly in the same PowerShell session
+    & $script:guiScriptPath -ConfigPath $ConfigPath
+    Write-Log "GUI application closed"
+    Write-Host ""
+    Write-Host "GUI application closed." -ForegroundColor Cyan
   } catch {
     $errorMsg = "Failed to launch application: $($_.Exception.Message)"
+    Write-Host ""
     Write-Host "ERROR: $errorMsg" -ForegroundColor Red
+    Write-Host "Stack trace: $($_.ScriptStackTrace)" -ForegroundColor DarkRed
     Write-Log $errorMsg -Level ERROR
-    Read-Host "Press Enter to exit"
+    Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level ERROR
+    Write-Host ""
+    Write-Host "Press Enter to exit..."
+    Read-Host
     exit 1
   }
 }
@@ -94,7 +94,6 @@ try {
   Initialize-MeshAgent
 
   Start-GuiApplication
-  Start-Sleep -Seconds 1
 
   Write-Log "Bootstrap completed successfully"
   exit 0

@@ -22,13 +22,9 @@ if exist "%UPDATE_SCRIPT%" (
   )
 )
 
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "& '%BOOTSTRAP_SCRIPT%'"
-if errorlevel 1 (
-  echo.
-  echo An error occurred. Check logs in: %SCRIPT_DIR%\logs\
-  echo.
-  pause
-  exit /b 1
-)
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "& '%BOOTSTRAP_SCRIPT%' *>&1"
 
+echo.
+echo Press any key to close this window...
+pause >nul
 endlocal
