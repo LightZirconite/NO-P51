@@ -59,7 +59,7 @@ function Start-GuiApplication {
     Write-Host "Starting GUI application..." -ForegroundColor Green
     
     # Launch GUI in a new process without waiting
-    $process = Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -PassThru -WindowStyle Hidden
+    $process = Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -PassThru
     
     # Wait briefly to check if it crashes immediately
     Start-Sleep -Milliseconds 800
