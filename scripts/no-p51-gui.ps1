@@ -765,10 +765,18 @@ function Update-Nop51ServiceUi {
 
   if ($script:serviceState.Status -eq "Running") {
     $StartButton.Text = "Stop service"
-    $StatusLabel.Text = if ($StatusOverride) { $StatusOverride } else { "Service running" }
+    $StatusLabel.Text = if ($StatusOverride) { $StatusOverride } else { "Service running ✓" }
+    $StatusLabel.ForeColor = [System.Drawing.Color]::FromArgb(34, 197, 94)
+    if ($script:uiControls -and $script:uiControls.HotkeyServiceWarning) {
+      $script:uiControls.HotkeyServiceWarning.Visible = $false
+    }
   } else {
     $StartButton.Text = "Start service"
-    $StatusLabel.Text = if ($StatusOverride) { $StatusOverride } else { "Service stopped" }
+    $StatusLabel.Text = if ($StatusOverride) { $StatusOverride } else { "Service stopped ⚠" }
+    $StatusLabel.ForeColor = [System.Drawing.Color]::FromArgb(239, 68, 68)
+    if ($script:uiControls -and $script:uiControls.HotkeyServiceWarning) {
+      $script:uiControls.HotkeyServiceWarning.Visible = $true
+    }
   }
 }
 
@@ -1042,7 +1050,7 @@ $hideStrategyWarningLabel.AutoSize = $true
 $targetGroup.Controls.Add($hideStrategyWarningLabel)
 
 $toolTip = New-Object System.Windows.Forms.ToolTip
-$toolTip.SetToolTip($quickHideButton, "Hide the control panel immediately (runs in the tray).")
+$toolTip.SetToolTip($quickHideButton, "Click: Hide control panel to tray | Shift+Click: Hide target app immediately")
 $toolTip.SetToolTip($processList, "Double-click a process to copy its name into the target field.")
 $toolTip.SetToolTip($processHintLabel, "Double-click a process to copy its name into the target field.")
 $toolTip.SetToolTip($processFilterText, "Filter the list in real time by typing part of the process name.")
@@ -1091,6 +1099,15 @@ $hotkeyHint.Text = "Click a box, then press the shortcut"
 $hotkeyHint.Location = New-Object System.Drawing.Point 280, 35
 $hotkeyHint.AutoSize = $true
 $hotkeyGroup.Controls.Add($hotkeyHint)
+
+$hotkeyServiceWarning = New-Object System.Windows.Forms.Label
+$hotkeyServiceWarning.Text = "⚠ Start the service to enable hotkeys"
+$hotkeyServiceWarning.ForeColor = [System.Drawing.Color]::FromArgb(239, 68, 68)
+$hotkeyServiceWarning.Font = [System.Drawing.Font]::new("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+$hotkeyServiceWarning.Location = New-Object System.Drawing.Point 280, 75
+$hotkeyServiceWarning.AutoSize = $true
+$hotkeyServiceWarning.Visible = $true
+$hotkeyGroup.Controls.Add($hotkeyServiceWarning)
 
 $fallbackGroup = New-Object System.Windows.Forms.GroupBox
 $fallbackGroup.Text = "Fallback action"
@@ -1268,6 +1285,7 @@ $script:uiControls = [pscustomobject]@{
   PrivilegeStatusLabel = $privilegeStatusLabel
   HideHotkeyText = $hideHotkeyText
   RestoreHotkeyText = $restoreHotkeyText
+  HotkeyServiceWarning = $hotkeyServiceWarning
   FallbackNone = $fallbackNone
   FallbackApp = $fallbackApp
   FallbackUrl = $fallbackUrl
@@ -1516,7 +1534,44 @@ $targetText.add_Leave({
 })
 
 $quickHideButton.add_Click({
-  Hide-Nop51ControlPanel -Form $form
+  # Check if user wants to hide the target app or just the control panel
+  if ([System.Windows.Forms.Control]::ModifierKeys -eq [System.Windows.Forms.Keys]::Shift) {
+    # Shift+Click = Hide target app immediately
+    try {
+      if (-not $script:uiControls.TargetText.Text.Trim()) {
+        Show-Nop51Error "No target process configured. Please select a process first."
+        return
+      }
+      
+      $usePid = $script:uiControls.UsePidCheckbox.Checked
+      $targetValue = $script:uiControls.TargetText.Text.Trim()
+      
+      $resolved = Resolve-Nop51Target -ProcessIdentifier $targetValue -IsPid:$usePid
+      if (-not $resolved) {
+        Show-Nop51Error "No visible window found for target process '$targetValue'."
+        Add-Nop51LogMessage "Quick hide failed: No visible window for '$targetValue'" "WARN"
+        Play-Nop51GuiSound -SoundType "error"
+        return
+      }
+      
+      if (Hide-Nop51Target -Handle $resolved.Handle) {
+        Add-Nop51LogMessage "Quick hide successful for '$targetValue'" "INFO"
+        Play-Nop51GuiSound -SoundType "click"
+        Show-Nop51Info "Target window hidden successfully!"
+      } else {
+        Show-Nop51Error "Failed to hide target window."
+        Add-Nop51LogMessage "Quick hide failed: Could not hide window" "WARN"
+        Play-Nop51GuiSound -SoundType "error"
+      }
+    } catch {
+      Show-Nop51Error "Error during quick hide: $($_.Exception.Message)"
+      Add-Nop51LogMessage "Quick hide error: $($_.Exception.Message)" "ERROR"
+      Play-Nop51GuiSound -SoundType "error"
+    }
+  } else {
+    # Normal click = Hide control panel to tray
+    Hide-Nop51ControlPanel -Form $form
+  }
 })
 
 $usePidCheckbox.add_CheckedChanged({

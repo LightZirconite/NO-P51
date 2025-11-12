@@ -332,9 +332,25 @@ function Resolve-Nop51Target {
   }
 
   $nameWithoutExtension = [System.IO.Path]::GetFileNameWithoutExtension($ProcessIdentifier)
-  $candidateProcesses = Get-Process -Name $nameWithoutExtension -ErrorAction SilentlyContinue | Sort-Object -Property StartTime -Descending
-
-  foreach ($process in $candidateProcesses) {
+  $candidateProcesses = Get-Process -Name $nameWithoutExtension -ErrorAction SilentlyContinue
+  
+  # First, try to find processes that already have MainWindowHandle set
+  $processesWithWindows = $candidateProcesses | Where-Object { $_.MainWindowHandle -ne 0 } | Sort-Object -Property StartTime -Descending
+  
+  foreach ($process in $processesWithWindows) {
+    $handle = [Nop51.Interop.WindowInterop]::FindMainWindow($process.Id)
+    if ($handle -ne [IntPtr]::Zero) {
+      return [pscustomobject]@{
+        Process = $process
+        Handle = $handle
+      }
+    }
+  }
+  
+  # If no process with MainWindowHandle, fallback to checking all processes
+  $processesWithoutWindows = $candidateProcesses | Where-Object { $_.MainWindowHandle -eq 0 } | Sort-Object -Property StartTime -Descending
+  
+  foreach ($process in $processesWithoutWindows) {
     $handle = [Nop51.Interop.WindowInterop]::FindMainWindow($process.Id)
     if ($handle -ne [IntPtr]::Zero) {
       return [pscustomobject]@{
